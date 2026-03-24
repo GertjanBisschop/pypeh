@@ -9,7 +9,7 @@ import secrets
 
 from dataclasses import is_dataclass
 from typing import Dict, Callable, Type, Any
-
+from ulid import ULID
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,9 @@ class NamespaceManager:
         self._default_base_uri = self._validate_and_normalize_base(default_base_uri)
         self.namespaces: dict[str, str] = {}  # namespace_label -> base_uri
         self.dataclass_namespace_map: dict[Type, str] = {}  # dataclass → namespace_label
-        self.suffix_strategy: Callable[[Any], str] = self.hash_suffix()
+        self.suffix_strategy: Callable[[Any], str] = self.generate_ulid()
+
+        # TODO: check does this enable the desired pattern???
 
     @property
     def default_base_uri(self):
@@ -145,6 +147,14 @@ class NamespaceManager:
         if namespace not in self.namespaces:
             raise ValueError(f"Namespace {namespace} not bound to NamespaceManager")
         self.dataclass_namespace_map[cls] = namespace
+
+    @classmethod
+    def generate_ulid(cls, length: int = 26):
+        def _generate_ulid(_):
+            ret = str(ULID())
+            return ret[:length]
+
+        return _generate_ulid
 
     @classmethod
     def hash_suffix(cls, length: int = 16):

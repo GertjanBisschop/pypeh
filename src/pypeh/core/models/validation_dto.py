@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
-import uuid
 
 from collections import defaultdict
 from enum import Enum
 from pydantic import BaseModel, field_validator
 from typing import Generic, Any, Sequence, TYPE_CHECKING
+from ulid import ULID
 
 from pypeh.core.models.typing import T_DataType
 from pypeh.core.models.constants import ObservablePropertyValueType, ValidationErrorLevel
@@ -219,7 +219,7 @@ class ValidationDesign(BaseModel):
         expression = ValidationExpression.from_peh(expression, type_annotations, dataset_label=dataset_label)
         name = getattr(validation_design, "validation_name", None)
         if name is None:
-            name = str(uuid.uuid4())
+            name = str(ULID())
 
         dependent_contextual_field_references = merge_dependencies(
             dependent_contextual_field_references, expression.dependent_contextual_field_references

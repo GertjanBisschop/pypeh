@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-import uuid
-
 from dataclasses import dataclass, field
-from typing import Iterable, Type
 from rdflib import URIRef, Literal, Namespace, BNode
 from rdflib.namespace import RDF, DCTERMS, XSD, PROV
+from typing import Iterable, Type
+from ulid import ULID
 
 from pypeh.core.models.internal_data_layout import Resource, Dataset, DatasetSeries, DatasetSchema
 from pypeh.core.models.constants import ObservablePropertyValueType
@@ -104,7 +103,7 @@ class SemanticResource(Resource):
     """
 
     label: str
-    identifier: str = field(default_factory=lambda: str(uuid.uuid4()))
+    identifier: str = field(default_factory=lambda: str(ULID()))
 
     was_attributed_to: str | None = field(default=None, metadata={"id": "prov:wasAttributedTo"})
     creator: str | None = field(default=None, metadata={"id": "dcterms:creator"})

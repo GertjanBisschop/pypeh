@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import itertools
 import logging
-import uuid
 
 from collections import defaultdict
 from dataclasses import dataclass, field
 from peh_model import peh
 from typing import TYPE_CHECKING, Callable, Generator, Generic, Sequence, Protocol
+from ulid import ULID
 
 from pypeh.core.cache.containers import CacheContainer, CacheContainerView
 from pypeh.core.models.typing import T_DataType
@@ -38,6 +38,7 @@ class DatasetSchemaElement:
     label: str
     observable_property_id: str
     data_type: ObservablePropertyValueType
+    identifier: str = field(default_factory=lambda: str(ULID()))
 
 
 @dataclass
@@ -50,6 +51,7 @@ class ElementReference:
 class ForeignKey:
     element_label: str
     reference: ElementReference
+    identifier: str = field(default_factory=lambda: str(ULID()))
 
 
 @dataclass
@@ -57,6 +59,7 @@ class DatasetSchema:
     elements: dict[str, DatasetSchemaElement] = field(default_factory=dict)
     primary_keys: set[str] = field(default_factory=set)
     foreign_keys: dict[str, ForeignKey] = field(default_factory=dict)
+    identifier: str = field(default_factory=lambda: str(ULID()))
 
     def __post_init__(self):
         self._type = self.get_type_annotations()
@@ -377,7 +380,7 @@ class Resource:
     """
 
     label: str
-    identifier: str = field(default_factory=lambda: str(uuid.uuid4()))
+    identifier: str = field(default_factory=lambda: str(ULID()))
     metadata: dict[str, Any] = field(default_factory=dict)
 
     id_factory: Callable[[str], str] | None = field(default=None)
@@ -697,7 +700,7 @@ class DatasetSeries(Resource, Generic[T_DataType]):
                 observable_property_id = element.observable_property
                 assert observable_property_id is not None
                 identifying = getattr(element, "is_observable_entity_key", False)
-                observation_id = str(uuid.uuid4())
+                observation_id = str(ULID())
                 if id_factory is not None:
                     observation_id = id_factory(observation_id)
                 observable_property = cache_view.get(observable_property_id, "ObservableProperty")
@@ -750,7 +753,7 @@ class DatasetSeries(Resource, Generic[T_DataType]):
         assert isinstance(data_layout, peh.DataLayout)
         layout_label = data_layout.ui_label
         if layout_label is None:
-            layout_label = str(uuid.uuid4())
+            layout_label = str(ULID())
         ret = DatasetSeries(label=layout_label, id_factory=id_factory, metadata={"described_by": data_layout_id})
 
         # add Observation links
