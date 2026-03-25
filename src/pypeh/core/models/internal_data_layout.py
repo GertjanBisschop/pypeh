@@ -6,7 +6,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from peh_model import peh
-from typing import TYPE_CHECKING, Callable, Generator, Generic, Sequence, Protocol
+from typing import TYPE_CHECKING, Callable, Generator, Generic, Sequence, Protocol, Type
 from ulid import ULID
 
 from pypeh.core.cache.containers import CacheContainer, CacheContainerView
@@ -60,10 +60,13 @@ class DatasetSchema:
     primary_keys: set[str] = field(default_factory=set)
     foreign_keys: dict[str, ForeignKey] = field(default_factory=dict)
     identifier: str = field(default_factory=lambda: str(ULID()))
+    factory: DatasetSeriesBuilder | None = field(default=None)
 
     def __post_init__(self):
         self._type = self.get_type_annotations()
         self._elements_by_observable_property: dict[str, set[str]] = self.build_observable_property_index()
+        if self.factory is None:
+            self.factory = DatasetSeriesBuilder()
 
     def get_type_annotations(self) -> dict[str, ObservablePropertyValueType]:
         ret: dict[str, ObservablePropertyValueType] = dict()
@@ -383,11 +386,11 @@ class Resource:
     identifier: str = field(default_factory=lambda: str(ULID()))
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    id_factory: Callable[[str], str] | None = field(default=None)
+    factory: DatasetSeriesBuilder | None = field(default=None)
 
     def __post_init__(self):
-        if self.id_factory is not None:
-            self.identifier = self.id_factory(self.label)
+        if self.factory is None:
+            self.factory = DatasetSeriesBuilder()
 
     def add_metadata(self, metadata_key: str, metadata_value: Any) -> bool:
         if metadata_key in self.metadata:
@@ -675,21 +678,23 @@ class DatasetSeries(Resource, Generic[T_DataType]):
         data_layout: peh.DataLayout,
         cache_view: CacheContainerView,
         apply_context: bool = True,
-        id_factory: Callable[[str], str] | None = None,
+        factory: DatasetSeriesBuilder | None = None,
     ) -> DatasetSeries:
         dataset_series_label = data_layout.ui_label
         assert dataset_series_label is not None
-        ret = DatasetSeries(
-            label=dataset_series_label, id_factory=id_factory, metadata={"described_by": data_layout.id}
+        if factory is None:
+            factory = DatasetSeriesBuilder()
+        ret = factory.mint_dataset_series(
+            label=dataset_series_label,
+            factory=factory,
+            metadata={"described_by": data_layout.id},
         )
         sections = getattr(data_layout, "sections")
         if sections is None:
             raise ValueError("No sections found in DataLayout")
         for section in sections:
             dataset_label = getattr(section, "ui_label")
-            dataset = ret.add_empty_dataset(
-                dataset_label=dataset_label, id_factory=id_factory, metadata={"described_by": section.id}
-            )
+            dataset = ret.add_empty_dataset(dataset_label=dataset_label, metadata={"described_by": section.id})
             assert isinstance(section, peh.DataLayoutSection)
             section_elements = section.elements
             assert section_elements is not None
@@ -701,8 +706,6 @@ class DatasetSeries(Resource, Generic[T_DataType]):
                 assert observable_property_id is not None
                 identifying = getattr(element, "is_observable_entity_key", False)
                 observation_id = str(ULID())
-                if id_factory is not None:
-                    observation_id = id_factory(observation_id)
                 observable_property = cache_view.get(observable_property_id, "ObservableProperty")
                 assert isinstance(observable_property, peh.ObservableProperty)
                 data_type = ObservablePropertyValueType(getattr(observable_property, "value_type", "string"))
@@ -883,10 +886,11 @@ class DatasetSeries(Resource, Generic[T_DataType]):
             is_primary_key,
         )
 
-    def add_empty_dataset(
-        self, dataset_label: str, id_factory: Callable[[str], str] | None = None, metadata: dict | None = None
-    ) -> Dataset:
-        dataset = Dataset(label=dataset_label, id_factory=id_factory)
+    def add_empty_dataset(self, dataset_label: str, metadata: dict | None = None) -> Dataset:
+        dataset = self.factory.mint_dataset(
+            label=dataset_label,
+            factory=self.factory,
+        )
         if metadata is not None:
             dataset.metadata = metadata
         self.register_dataset(dataset)
@@ -1099,3 +1103,59 @@ class DatasetSeries(Resource, Generic[T_DataType]):
 
     def __iter__(self):
         return iter(self.parts)
+
+
+class MintingProtocol(Protocol):
+    def mint_resource(self, resource_type: Type) -> str: ...
+
+
+class ULIDFactory(MintingProtocol):
+    def mint_resource(self, _: Type) -> str:
+        return str(ULID())
+
+
+class DatasetSeriesBuilder:
+    def __init__(self, minting_protocol: MintingProtocol = ULIDFactory()):
+        self.minting_protocol = minting_protocol
+
+    def mint_dataset_series(self, label: str, **kwargs):
+        uri = self.minting_protocol.mint_resource(DatasetSeries)
+        return DatasetSeries(
+            label=label,
+            identifier=uri,
+            **kwargs,
+        )
+
+    def mint_dataset(self, label: str, **kwargs):
+        uri = self.minting_protocol.mint_resource(Dataset)
+        return Dataset(
+            label=label,
+            identifier=uri,
+            **kwargs,
+        )
+
+    def mint_dataset_schema(self, **kwargs):
+        uri = self.minting_protocol.mint_resource(DatasetSchema)
+        return DatasetSchema(
+            identifier=uri,
+            **kwargs,
+        )
+
+    def mint_dataset_schema_element(
+        self, label: str, observable_property_id: str, data_type: ObservablePropertyValueType
+    ):
+        uri = self.minting_protocol.mint_resource(DatasetSchemaElement)
+        return DatasetSchemaElement(
+            label=label,
+            identifier=uri,
+            observable_property_id=observable_property_id,
+            data_type=data_type,
+        )
+
+    def mint_foreign_key(self, element_label: str, reference: ElementReference):
+        uri = self.minting_protocol.mint_resource(ForeignKey)
+        return ForeignKey(
+            identifier=uri,
+            element_label=element_label,
+            reference=reference,
+        )

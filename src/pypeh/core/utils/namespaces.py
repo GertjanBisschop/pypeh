@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import base64
-import hashlib
-import json
 import logging
 import re
-import secrets
 
 from dataclasses import is_dataclass
-from typing import Dict, Callable, Type, Any
+from typing import Dict, Callable, Type
 from ulid import ULID
+
+from pypeh.core.models.internal_data_layout import MintingProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -116,12 +114,12 @@ class ImportMap:
         return [p for p in uri.replace("#", "/").split("/") if p]
 
 
-class NamespaceManager:
+class NamespaceManager(MintingProtocol):
     def __init__(self, default_base_uri: str | None = None):
         self._default_base_uri = self._validate_and_normalize_base(default_base_uri)
         self.namespaces: dict[str, str] = {}  # namespace_label -> base_uri
         self.dataclass_namespace_map: dict[Type, str] = {}  # dataclass → namespace_label
-        self.suffix_strategy: Callable[[Any], str] = self.generate_ulid()
+        self.suffix_strategy: Callable[[], str] = self.generate_ulid()
         self.resource_type_strategy: Callable[[Type], str] = default_resource_type
 
     @property
@@ -152,34 +150,11 @@ class NamespaceManager:
 
     @classmethod
     def generate_ulid(cls, length: int = 26):
-        def _generate_ulid(_: Any | None = None) -> str:
+        def _generate_ulid() -> str:
             ret = str(ULID())
             return ret[:length]
 
         return _generate_ulid
-
-    @classmethod
-    def hash_suffix(cls, length: int = 16):
-        def _hash_suffix(mapping) -> str:
-            canonical = json.dumps(mapping, sort_keys=True, separators=(",", ":"))
-            h = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-            return h[:length]
-
-        return _hash_suffix
-
-    @classmethod
-    def slugify_suffix(cls):
-        n_bytes = 10
-
-        def _slugify_suffix(text) -> str:
-            text = text.lower()
-            text = re.sub(r"[^a-z0-9]+", "-", text)
-            slug = text.strip("-")
-            token = secrets.token_bytes(n_bytes)
-            h = base64.urlsafe_b64encode(token).decode("ascii").rstrip("=")
-            return f"{slug}-{h}"
-
-        return _slugify_suffix
 
     def _resolve_base(self, resource_class: Type | None = None, namespace_key: str | None = None) -> str | None:
         # Explicit namespace overrides everything
@@ -210,40 +185,37 @@ class NamespaceManager:
     def mint(
         self,
         resource_class: Type,
-        resource_kwargs: dict,
         namespace_key: str | None = None,
-        identifying_field: str = "id",
     ) -> str:
-        data = {k: v for k, v in resource_kwargs.items() if k != identifying_field}
-
         base = self._resolve_base(resource_class, namespace_key)
         if base is None:
             raise ValueError("Could not resolve base URI")
-        suffix = self.suffix_strategy(data)
+        suffix = self.suffix_strategy()
         return f"{base}{suffix}"
+
+    def mint_resource(self, resource_class) -> str:
+        return self.mint(resource_class=resource_class)
 
     def mint_and_set(self, obj, namespace_key: str | None = None, identifying_field: str = "id") -> str:
         uri = self.mint(
             resource_class=obj.__class__,
-            resource_kwargs=obj.__dict__,
             namespace_key=namespace_key,
-            identifying_field=identifying_field,
         )
         setattr(obj, identifying_field, uri)
 
         return uri
 
     def get_id_factory(
-        self, namespace_key: str | None = None, suffix_strategy: Callable[[Any], str] | None = None
-    ) -> Callable[[Any], str] | None:
+        self, namespace_key: str | None = None, suffix_strategy: Callable[[], str] | None = None
+    ) -> Callable[[], str] | None:
         base = self._resolve_base(resource_class=None, namespace_key=namespace_key)
         if base is None:
             return None
         if suffix_strategy is None:
             suffix_strategy = self.suffix_strategy
 
-        def _factory(resource_kwargs: dict):
-            suffix = suffix_strategy(resource_kwargs)
+        def _factory():
+            suffix = suffix_strategy()
             return f"{base}{suffix}"
 
         return _factory

@@ -464,9 +464,7 @@ class Session(Generic[T_AdapterType, T_DataType]):
         assert self.namespace_manager is not None, "No NameSpaceManager is bound to Session"
         identifier = self.namespace_manager.mint(
             resource_class=resource_cls,
-            resource_kwargs=data,
             namespace_key=namespace_key,
-            identifying_field=identifiying_field,
         )
         data[identifiying_field] = identifier
         resource = resource_cls(**data)
