@@ -122,12 +122,14 @@ class NamespaceManager:
         self.namespaces: dict[str, str] = {}  # namespace_label -> base_uri
         self.dataclass_namespace_map: dict[Type, str] = {}  # dataclass → namespace_label
         self.suffix_strategy: Callable[[Any], str] = self.generate_ulid()
-
-        # TODO: check does this enable the desired pattern???
+        self.resource_type_strategy: Callable[[Type], str] = default_resource_type
 
     @property
     def default_base_uri(self):
         return self._default_base_uri
+
+    def set_suffix_strategy(self, strategy: Callable):
+        self.suffix_strategy = strategy
 
     @staticmethod
     def _validate_and_normalize_base(uri: str | None) -> str | None:
@@ -150,7 +152,7 @@ class NamespaceManager:
 
     @classmethod
     def generate_ulid(cls, length: int = 26):
-        def _generate_ulid(_):
+        def _generate_ulid(_: Any | None = None) -> str:
             ret = str(ULID())
             return ret[:length]
 
@@ -158,7 +160,7 @@ class NamespaceManager:
 
     @classmethod
     def hash_suffix(cls, length: int = 16):
-        def _hash_suffix(mapping):
+        def _hash_suffix(mapping) -> str:
             canonical = json.dumps(mapping, sort_keys=True, separators=(",", ":"))
             h = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
             return h[:length]
@@ -169,7 +171,7 @@ class NamespaceManager:
     def slugify_suffix(cls):
         n_bytes = 10
 
-        def _slugify_suffix(text):
+        def _slugify_suffix(text) -> str:
             text = text.lower()
             text = re.sub(r"[^a-z0-9]+", "-", text)
             slug = text.strip("-")
@@ -187,14 +189,21 @@ class NamespaceManager:
                 raise ValueError(f"No registered base URI for namespace {namespace_key}")
             return base
 
+        resource_type = None
         # Class-specific namespace
-        if resource_class in self.dataclass_namespace_map:
-            ns = self.dataclass_namespace_map[resource_class]
-            return self.namespaces[ns]
+        if resource_class is not None:
+            if resource_class in self.dataclass_namespace_map:
+                ns = self.dataclass_namespace_map[resource_class]
+                return self.namespaces[ns]
+            else:
+                resource_type = self.resource_type_strategy(resource_class)
 
         # Default namespace
         if self.default_base_uri is not None:
-            return self.default_base_uri
+            if resource_type is not None:
+                return f"{self.default_base_uri}{resource_type}/"
+            else:
+                return self.default_base_uri
 
         return None
 
@@ -213,7 +222,7 @@ class NamespaceManager:
         suffix = self.suffix_strategy(data)
         return f"{base}{suffix}"
 
-    def mint_and_set(self, obj, namespace_key: str | None = None, identifying_field: str = "id"):
+    def mint_and_set(self, obj, namespace_key: str | None = None, identifying_field: str = "id") -> str:
         uri = self.mint(
             resource_class=obj.__class__,
             resource_kwargs=obj.__dict__,
@@ -221,6 +230,8 @@ class NamespaceManager:
             identifying_field=identifying_field,
         )
         setattr(obj, identifying_field, uri)
+
+        return uri
 
     def get_id_factory(
         self, namespace_key: str | None = None, suffix_strategy: Callable[[Any], str] | None = None
@@ -236,3 +247,9 @@ class NamespaceManager:
             return f"{base}{suffix}"
 
         return _factory
+
+
+def default_resource_type(cls: Type) -> str:
+    # Convert CamelCase → kebab-case
+    name = cls.__name__
+    return re.sub(r"(?<!^)(?=[A-Z])", "-", name).lower()

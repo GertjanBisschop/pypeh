@@ -629,7 +629,7 @@ class DatasetSeries(Resource, Generic[T_DataType]):
         for dataset_label in self.parts:
             dataset = self[dataset_label]
             assert dataset is not None
-            for obs in dataset.observations:
+            for obs in dataset.observation_ids:
                 self._register_observation(obs, dataset_label)
 
     def build_context_index(self):
@@ -640,9 +640,9 @@ class DatasetSeries(Resource, Generic[T_DataType]):
             dataset = self[dataset_label]
             assert dataset is not None
             assert (
-                len(dataset.observations) == 1
+                len(dataset.observation_ids) == 1
             ), "Cannot build context index if any dataset contains more than one observation"
-            observation_id = next(iter(dataset.observations))
+            observation_id = next(iter(dataset.observation_ids))
             dataset_schema = dataset.schema
             assert dataset_schema is not None
             for element_label, element in dataset.schema.elements.items():

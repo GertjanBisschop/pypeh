@@ -1,4 +1,5 @@
 import pytest
+import re
 
 from peh_model.peh import ObservableProperty
 
@@ -30,7 +31,7 @@ class TestNamespaces:
             nm.register_class(NotADataClass, "project")
 
     def test_mint_without_namespace_raises(self, nm):
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             nm.register_class(ObservableProperty, "project")
         nm.namespaces["obsprop"] = "https://w3id.org/test"
         nm.register_class(ObservableProperty, "obsprop")
@@ -63,7 +64,7 @@ class TestNamespaces:
     def test_hash_suffix_strategy(self, nm):
         nm.bind("project", "https://w3id.org/peh")
         nm.register_class(ObservableProperty, "project")
-        nm.suffix_strategy = nm.default_suffix(length=8)
+        nm.suffix_strategy = nm.generate_ulid(length=8)
         p = ObservableProperty("question")
         iri = nm.mint(p.__class__, p.__dict__)
         suffix = iri.split("/")[-1]
@@ -75,8 +76,16 @@ class TestNamespaces:
     def test_mint_and_set(self, nm):
         nm.bind("project", "https://w3id.org/peh")
         nm.register_class(ObservableProperty, "project")
-        nm.suffix_strategy = nm.default_suffix(length=8)
+        nm.suffix_strategy = nm.generate_ulid()
         p = ObservableProperty(id="temp", ui_label="question")
-        iri = nm.mint(p.__class__, p.__dict__)
-        nm.mint_and_set(p)
+        iri = nm.mint_and_set(p)
         assert p.id == iri
+
+    def test_mint_and_set_resource_type(self):
+        nm = NamespaceManager("https://w3id.org/example/id/")
+        p = ObservableProperty(id="temp", ui_label="question")
+
+        iri = nm.mint_and_set(p)
+        pattern = r"^https://w3id\.org/example/id/observable-property/[0-9A-HJKMNP-TV-Z]{26}$"
+
+        assert re.match(pattern, iri), f"IRI did not match expected pattern: {iri}"
