@@ -6,7 +6,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from peh_model import peh
-from typing import TYPE_CHECKING, Callable, Generator, Generic, Sequence, Protocol, Type
+from typing import TYPE_CHECKING, Generator, Generic, Sequence, Protocol, Type
 from ulid import ULID
 
 from pypeh.core.cache.containers import CacheContainer, CacheContainerView
@@ -112,12 +112,13 @@ class DatasetSchema:
         element_label: str | None = None,
         is_primary_key: bool = False,
     ) -> DatasetSchemaElement:
+        assert self.factory is not None
         if element_label is None:
             element_label = observable_property_id
         if element_label in self.elements:
             raise ValueError(f"DatasetSchema already contains an Element with label {element_label}")
         assert isinstance(data_type, ObservablePropertyValueType)
-        new_element = DatasetSchemaElement(
+        new_element = self.factory.mint_dataset_schema_element(
             label=element_label,
             observable_property_id=observable_property_id,
             data_type=data_type,
@@ -138,7 +139,8 @@ class DatasetSchema:
         foreign_key_dataset_label: str,
         foreign_key_element_label: str,
     ):
-        foreign_key_object = ForeignKey(
+        assert self.factory is not None
+        foreign_key_object = self.factory.mint_foreign_key(
             element_label=element_label,
             reference=ElementReference(
                 dataset_label=foreign_key_dataset_label,
@@ -232,6 +234,7 @@ class DatasetSchema:
         elements = {}
         foreign_keys = {}
         primary_keys = set()
+        assert self.factory is not None
 
         for element_label in element_group:
             element = self.get_element_by_label(element_label)
@@ -244,11 +247,12 @@ class DatasetSchema:
                     primary_keys.add(element_label)
             elements[element_label] = element
 
-        return DatasetSchema(
+        ret = self.factory.mint_dataset_schema(
             elements=elements,
             primary_keys=primary_keys,
             foreign_keys=foreign_keys,
         )
+        return ret
 
     def relabel(self, element_mapping: dict[str, str]):
         elements: dict[str, DatasetSchemaElement] = dict()
@@ -406,10 +410,16 @@ class Resource:
 
 @dataclass(kw_only=True)
 class Dataset(Resource, Generic[T_DataType]):
-    schema: DatasetSchema = field(default_factory=DatasetSchema)
+    schema: DatasetSchema | None = field(default=None)
     data: T_DataType | None = field(default=None)
     part_of: DatasetSeries | None = field(default=None)
     observation_ids: set[str] = field(default_factory=set)
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.schema is None:
+            assert self.factory is not None
+            self.schema = self.factory.mint_dataset_schema()
 
     def get_type_annotations(self) -> dict[str, ObservablePropertyValueType]:
         return self.schema.get_type_annotations()
@@ -448,7 +458,8 @@ class Dataset(Resource, Generic[T_DataType]):
         dataops_adapter: OutDataOpsInterface,
     ) -> DatasetSeries:
         # TODO: schemas for all new datasets need to be properly relabeled
-        ret = DatasetSeries(label=new_dataset_series_label, parts={})
+        assert self.factory is not None
+        ret = self.factory.mint_dataset_series(label=new_dataset_series_label, parts={})
         observation_design_dict = {od.id: od for od in observation_designs}
 
         for dataset_label, observation_group in observation_groups.items():
@@ -482,7 +493,7 @@ class Dataset(Resource, Generic[T_DataType]):
             # split schema
             schema_subset = self.schema.subset(element_group)
             # add both to new dataset
-            new_dataset = Dataset(
+            new_dataset = self.factory.mint_dataset(
                 schema=schema_subset,
                 label=dataset_label,
                 data=data_subset,
@@ -672,173 +683,6 @@ class DatasetSeries(Resource, Generic[T_DataType]):
             assert dataset is not None
             dataset.schema.apply_context(context, cache, this_dataset=self.label)
 
-    @classmethod
-    def from_peh_datalayout(
-        cls,
-        data_layout: peh.DataLayout,
-        cache_view: CacheContainerView,
-        apply_context: bool = True,
-        factory: DatasetSeriesBuilder | None = None,
-    ) -> DatasetSeries:
-        dataset_series_label = data_layout.ui_label
-        assert dataset_series_label is not None
-        if factory is None:
-            factory = DatasetSeriesBuilder()
-        ret = factory.mint_dataset_series(
-            label=dataset_series_label,
-            factory=factory,
-            metadata={"described_by": data_layout.id},
-        )
-        sections = getattr(data_layout, "sections")
-        if sections is None:
-            raise ValueError("No sections found in DataLayout")
-        for section in sections:
-            dataset_label = getattr(section, "ui_label")
-            dataset = ret.add_empty_dataset(dataset_label=dataset_label, metadata={"described_by": section.id})
-            assert isinstance(section, peh.DataLayoutSection)
-            section_elements = section.elements
-            assert section_elements is not None
-            for element in section_elements:
-                assert isinstance(element, peh.DataLayoutElement)
-                element_label = element.label
-                assert element_label is not None
-                observable_property_id = element.observable_property
-                assert observable_property_id is not None
-                identifying = getattr(element, "is_observable_entity_key", False)
-                observation_id = str(ULID())
-                observable_property = cache_view.get(observable_property_id, "ObservableProperty")
-                assert isinstance(observable_property, peh.ObservableProperty)
-                data_type = ObservablePropertyValueType(getattr(observable_property, "value_type", "string"))
-                ret.add_observable_property(
-                    observation_id=observation_id,
-                    observable_property_id=observable_property_id,
-                    data_type=data_type,
-                    dataset_label=dataset_label,
-                    element_label=element_label,
-                    is_primary_key=identifying,
-                )
-                # ADD FOREIGN KEYS
-                foreign_key = element.foreign_key_link
-                if foreign_key is not None:
-                    assert isinstance(foreign_key, peh.DataLayoutElementLink)
-                    section_id = foreign_key.section
-                    assert isinstance(section_id, str)
-                    foreign_key_element_label = foreign_key.label
-                    assert foreign_key_element_label is not None
-                    section = cache_view.get(section_id, "DataLayoutSection")
-                    assert section is not None, f"section with id {section_id} cannot be found"
-                    foreign_key_dataset_label = section.ui_label
-                    assert (
-                        foreign_key_dataset_label is not None
-                    ), f"Cannot create foreign_key_link, ui_label is None for section {section.id}"
-                    dataset.schema.add_foreign_key_link(
-                        element_label=element_label,
-                        foreign_key_dataset_label=foreign_key_dataset_label,
-                        foreign_key_element_label=foreign_key_element_label,
-                    )
-
-        if apply_context:
-            ret.apply_context(cache=cache_view._container)
-
-        return ret
-
-    @classmethod
-    def from_peh_data_import_config(
-        cls,
-        data_import_config: peh.DataImportConfig,
-        cache_view: CacheContainerView,
-        apply_context: bool = True,
-        id_factory: Callable[[str], str] | None = None,
-    ) -> DatasetSeries:
-        data_layout_id = data_import_config.layout
-        assert data_layout_id is not None
-        data_layout = cache_view.get(data_layout_id, "DataLayout")
-        assert isinstance(data_layout, peh.DataLayout)
-        layout_label = data_layout.ui_label
-        if layout_label is None:
-            layout_label = str(ULID())
-        ret = DatasetSeries(label=layout_label, id_factory=id_factory, metadata={"described_by": data_layout_id})
-
-        # add Observation links
-        section_mapping = data_import_config.section_mapping
-        assert isinstance(section_mapping, peh.DataImportSectionMapping)
-        section_mapping_links = section_mapping.section_mapping_links
-        assert isinstance(section_mapping_links, list)
-        for link in section_mapping_links:
-            assert isinstance(link, peh.DataImportSectionMappingLink)
-            section_id = link.section
-            assert isinstance(section_id, str)
-            layout_section = cache_view.get(section_id, "DataLayoutSection")
-            assert isinstance(layout_section, peh.DataLayoutSection)
-            dataset_label = layout_section.ui_label
-            assert dataset_label is not None
-            dataset = ret.add_empty_dataset(
-                dataset_label=dataset_label,
-                id_factory=id_factory,
-                metadata={"described_by": section_id},
-            )
-            observation_ids = link.observation_id_list
-            assert observation_ids is not None
-            assert isinstance(observation_ids, list)
-            for observation_id in observation_ids:
-                # observation_observable_properties
-                observation = cache_view.get(observation_id, "Observation")
-                assert isinstance(observation, peh.Observation)
-                observation_design_id = observation.observation_design
-                assert isinstance(observation_design_id, peh.ObservationDesignId)
-                observation_design = cache_view.get(observation_design_id, "ObservationDesign")
-                assert isinstance(observation_design, peh.ObservationDesign)
-                obs_prop_spec_dict = {
-                    str(s.observable_property): s for s in observation_design.observable_property_specifications
-                }
-                # data_layout_section_observable_properties
-                elements = layout_section.elements
-                assert elements is not None
-                # labeled_observable_property_specifications = {element_label: ObservablePropertySpecification}
-                labeled_observable_property_specifications = {}
-                for element in elements:
-                    assert isinstance(element, peh.DataLayoutElement)
-                    if element.observable_property in obs_prop_spec_dict.keys():
-                        element_label = element.label
-                        assert element_label is not None
-                        obs_prop_id = element.observable_property
-                        assert isinstance(obs_prop_id, str)
-                        obs_prop = cache_view.get(obs_prop_id, "ObservableProperty")
-                        assert isinstance(obs_prop, peh.ObservableProperty)
-                        obs_prop_spec = obs_prop_spec_dict[obs_prop_id]
-                        assert isinstance(obs_prop_spec, peh.ObservablePropertySpecification)
-                        obs_prop_spec.observable_property = obs_prop
-                        labeled_observable_property_specifications[element_label] = obs_prop_spec
-                        # process foreign keys
-                        foreign_key = element.foreign_key_link
-                        if foreign_key is not None:
-                            assert isinstance(foreign_key, peh.DataLayoutElementLink)
-                            section_id = foreign_key.section
-                            assert isinstance(section_id, str)
-                            foreign_key_element_label = foreign_key.label
-                            assert foreign_key_element_label is not None
-                            section = cache_view.get(section_id, "DataLayoutSection")
-                            assert section is not None, f"section with id {section_id} cannot be found"
-                            foreign_key_dataset_label = section.ui_label
-                            assert (
-                                foreign_key_dataset_label is not None
-                            ), f"Cannot create foreign_key_link, ui_label is None for section {section.id}"
-                            dataset.schema.add_foreign_key_link(
-                                element_label=element_label,
-                                foreign_key_dataset_label=foreign_key_dataset_label,
-                                foreign_key_element_label=foreign_key_element_label,
-                            )
-
-                observation = cache_view.get(observation_id)
-                assert isinstance(observation, peh.Observation)
-                ret.add_observation(
-                    dataset_label=dataset_label,
-                    observation=observation,
-                    labeled_observable_property_specifications=labeled_observable_property_specifications,
-                )
-
-        return ret
-
     def register_dataset(self, dataset: Dataset):
         dataset.part_of = self
         self.parts[dataset.label] = dataset
@@ -887,6 +731,7 @@ class DatasetSeries(Resource, Generic[T_DataType]):
         )
 
     def add_empty_dataset(self, dataset_label: str, metadata: dict | None = None) -> Dataset:
+        assert self.factory is not None
         dataset = self.factory.mint_dataset(
             label=dataset_label,
             factory=self.factory,
@@ -1115,7 +960,9 @@ class ULIDFactory(MintingProtocol):
 
 
 class DatasetSeriesBuilder:
-    def __init__(self, minting_protocol: MintingProtocol = ULIDFactory()):
+    def __init__(self, minting_protocol: MintingProtocol | None = ULIDFactory()):
+        if minting_protocol is None:
+            minting_protocol = ULIDFactory()
         self.minting_protocol = minting_protocol
 
     def mint_dataset_series(self, label: str, **kwargs):
@@ -1123,6 +970,7 @@ class DatasetSeriesBuilder:
         return DatasetSeries(
             label=label,
             identifier=uri,
+            factory=self,
             **kwargs,
         )
 
@@ -1131,6 +979,7 @@ class DatasetSeriesBuilder:
         return Dataset(
             label=label,
             identifier=uri,
+            factory=self,
             **kwargs,
         )
 
@@ -1138,6 +987,7 @@ class DatasetSeriesBuilder:
         uri = self.minting_protocol.mint_resource(DatasetSchema)
         return DatasetSchema(
             identifier=uri,
+            factory=self,
             **kwargs,
         )
 
@@ -1159,3 +1009,164 @@ class DatasetSeriesBuilder:
             element_label=element_label,
             reference=reference,
         )
+
+    def from_peh_datalayout(
+        self,
+        data_layout: peh.DataLayout,
+        cache_view: CacheContainerView,
+        apply_context: bool = True,
+    ) -> DatasetSeries:
+        dataset_series_label = data_layout.ui_label
+        assert dataset_series_label is not None
+        ret = self.mint_dataset_series(
+            label=dataset_series_label,
+            metadata={"described_by": data_layout.id},
+        )
+        sections = getattr(data_layout, "sections")
+        if sections is None:
+            raise ValueError("No sections found in DataLayout")
+        for section in sections:
+            dataset_label = getattr(section, "ui_label")
+            dataset = ret.add_empty_dataset(dataset_label=dataset_label, metadata={"described_by": section.id})
+            assert isinstance(section, peh.DataLayoutSection)
+            section_elements = section.elements
+            assert section_elements is not None
+            for element in section_elements:
+                assert isinstance(element, peh.DataLayoutElement)
+                element_label = element.label
+                assert element_label is not None
+                observable_property_id = element.observable_property
+                assert observable_property_id is not None
+                identifying = getattr(element, "is_observable_entity_key", False)
+                observation_id = str(ULID())
+                observable_property = cache_view.get(observable_property_id, "ObservableProperty")
+                assert isinstance(observable_property, peh.ObservableProperty)
+                data_type = ObservablePropertyValueType(getattr(observable_property, "value_type", "string"))
+                ret.add_observable_property(
+                    observation_id=observation_id,
+                    observable_property_id=observable_property_id,
+                    data_type=data_type,
+                    dataset_label=dataset_label,
+                    element_label=element_label,
+                    is_primary_key=identifying,
+                )
+                # ADD FOREIGN KEYS
+                foreign_key = element.foreign_key_link
+                if foreign_key is not None:
+                    assert isinstance(foreign_key, peh.DataLayoutElementLink)
+                    section_id = foreign_key.section
+                    assert isinstance(section_id, str)
+                    foreign_key_element_label = foreign_key.label
+                    assert foreign_key_element_label is not None
+                    section = cache_view.get(section_id, "DataLayoutSection")
+                    assert section is not None, f"section with id {section_id} cannot be found"
+                    foreign_key_dataset_label = section.ui_label
+                    assert (
+                        foreign_key_dataset_label is not None
+                    ), f"Cannot create foreign_key_link, ui_label is None for section {section.id}"
+                    dataset.schema.add_foreign_key_link(
+                        element_label=element_label,
+                        foreign_key_dataset_label=foreign_key_dataset_label,
+                        foreign_key_element_label=foreign_key_element_label,
+                    )
+
+        if apply_context:
+            ret.apply_context(cache=cache_view._container)
+
+        return ret
+
+    def from_peh_data_import_config(
+        self,
+        data_import_config: peh.DataImportConfig,
+        cache_view: CacheContainerView,
+        apply_context: bool = True,
+    ) -> DatasetSeries:
+        data_layout_id = data_import_config.layout
+        assert data_layout_id is not None
+        data_layout = cache_view.get(data_layout_id, "DataLayout")
+        assert isinstance(data_layout, peh.DataLayout)
+        layout_label = data_layout.ui_label
+        if layout_label is None:
+            layout_label = str(ULID())
+        ret = self.mint_dataset_series(
+            label=layout_label,
+            metadata={"described_by": data_layout_id},
+        )
+        # add Observation links
+        section_mapping = data_import_config.section_mapping
+        assert isinstance(section_mapping, peh.DataImportSectionMapping)
+        section_mapping_links = section_mapping.section_mapping_links
+        assert isinstance(section_mapping_links, list)
+        for link in section_mapping_links:
+            assert isinstance(link, peh.DataImportSectionMappingLink)
+            section_id = link.section
+            assert isinstance(section_id, str)
+            layout_section = cache_view.get(section_id, "DataLayoutSection")
+            assert isinstance(layout_section, peh.DataLayoutSection)
+            dataset_label = layout_section.ui_label
+            assert dataset_label is not None
+            dataset = ret.add_empty_dataset(
+                dataset_label=dataset_label,
+                metadata={"described_by": section_id},
+            )
+            observation_ids = link.observation_id_list
+            assert observation_ids is not None
+            assert isinstance(observation_ids, list)
+            for observation_id in observation_ids:
+                # observation_observable_properties
+                observation = cache_view.get(observation_id, "Observation")
+                assert isinstance(observation, peh.Observation)
+                observation_design_id = observation.observation_design
+                assert isinstance(observation_design_id, peh.ObservationDesignId)
+                observation_design = cache_view.get(observation_design_id, "ObservationDesign")
+                assert isinstance(observation_design, peh.ObservationDesign)
+                obs_prop_spec_dict = {
+                    str(s.observable_property): s for s in observation_design.observable_property_specifications
+                }
+                # data_layout_section_observable_properties
+                elements = layout_section.elements
+                assert elements is not None
+                # labeled_observable_property_specifications = {element_label: ObservablePropertySpecification}
+                labeled_observable_property_specifications = {}
+                for element in elements:
+                    assert isinstance(element, peh.DataLayoutElement)
+                    if element.observable_property in obs_prop_spec_dict.keys():
+                        element_label = element.label
+                        assert element_label is not None
+                        obs_prop_id = element.observable_property
+                        assert isinstance(obs_prop_id, str)
+                        obs_prop = cache_view.get(obs_prop_id, "ObservableProperty")
+                        assert isinstance(obs_prop, peh.ObservableProperty)
+                        obs_prop_spec = obs_prop_spec_dict[obs_prop_id]
+                        assert isinstance(obs_prop_spec, peh.ObservablePropertySpecification)
+                        obs_prop_spec.observable_property = obs_prop
+                        labeled_observable_property_specifications[element_label] = obs_prop_spec
+                        # process foreign keys
+                        foreign_key = element.foreign_key_link
+                        if foreign_key is not None:
+                            assert isinstance(foreign_key, peh.DataLayoutElementLink)
+                            section_id = foreign_key.section
+                            assert isinstance(section_id, str)
+                            foreign_key_element_label = foreign_key.label
+                            assert foreign_key_element_label is not None
+                            section = cache_view.get(section_id, "DataLayoutSection")
+                            assert section is not None, f"section with id {section_id} cannot be found"
+                            foreign_key_dataset_label = section.ui_label
+                            assert (
+                                foreign_key_dataset_label is not None
+                            ), f"Cannot create foreign_key_link, ui_label is None for section {section.id}"
+                            dataset.schema.add_foreign_key_link(
+                                element_label=element_label,
+                                foreign_key_dataset_label=foreign_key_dataset_label,
+                                foreign_key_element_label=foreign_key_element_label,
+                            )
+
+                observation = cache_view.get(observation_id)
+                assert isinstance(observation, peh.Observation)
+                ret.add_observation(
+                    dataset_label=dataset_label,
+                    observation=observation,
+                    labeled_observable_property_specifications=labeled_observable_property_specifications,
+                )
+
+        return ret

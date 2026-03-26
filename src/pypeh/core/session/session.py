@@ -22,7 +22,7 @@ from pypeh.core.models.validation_errors import (
     ValidationErrorReport,
     ValidationErrorReportCollection,
 )
-from pypeh.core.models.internal_data_layout import DatasetSeries, Dataset
+from pypeh.core.models.internal_data_layout import DatasetSeries, Dataset, DatasetSeriesBuilder
 from pypeh.core.interfaces.outbound.dataops import (
     OutDataOpsInterface,
     DataEnrichmentInterface,
@@ -264,21 +264,15 @@ class Session(Generic[T_AdapterType, T_DataType]):
     ) -> DatasetSeries[DataFrame]:
         cache_view = CacheContainerView(self.cache)
         assert isinstance(data_import_config, peh.DataImportConfig)
-        id_factory = None
         if namespace_key is not None and self.namespace_manager is None:
             raise ValueError("A namespace_key can only be provided when a NamespaceMananger is bound to the Session")
-        if self.namespace_manager is not None:
-            id_factory = self.namespace_manager.get_id_factory(
-                namespace_key, suffix_strategy=NamespaceManager.slugify_suffix()
-            )
-        dataset_series = DatasetSeries.from_peh_data_import_config(
+        series_builder = DatasetSeriesBuilder(minting_protocol=self.namespace_manager)
+        dataset_series = series_builder.from_peh_data_import_config(
             data_import_config,
             cache_view=cache_view,
-            id_factory=id_factory,
         )
         data_schema = dataset_series.get_type_annotations()
 
-        # Add data to DatasetSeries
         # TODO: fix host calls with unified ConnectionManager
         if is_url(source):
             raise NotImplementedError
@@ -405,7 +399,8 @@ class Session(Generic[T_AdapterType, T_DataType]):
     ) -> dict[str, ValidationConfig]:
         ret: dict[str, ValidationConfig] = {}
         cache_view = CacheContainerView(self.cache)
-        dataset_series = DatasetSeries.from_peh_datalayout(
+        series_builder = DatasetSeriesBuilder(minting_protocol=self.namespace_manager)
+        dataset_series = series_builder.from_peh_datalayout(
             data_layout=data_layout,
             cache_view=cache_view,
             apply_context=True,
