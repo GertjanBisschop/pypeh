@@ -292,8 +292,9 @@ class TestPydanticToDto:
 
         result = adapter()._validate(data, config)
         assert result is not None
-        assert result.total_errors == 0
+        assert result.total_errors == 1
         assert len(result.unexpected_errors) == 1
+        assert result.error_counts[ValidationErrorLevel.FATAL] == 1
         assert result.unexpected_errors[0].type == "AttributeError"
 
 

@@ -59,7 +59,8 @@ class DataFrameValidationAdapter(DataFrameAdapter, ValidationInterface[DataFrame
         for group in report.groups:
             for error in group.errors:
                 new_location_list = []
-                assert error.locations is not None
+                if not error.locations:
+                    continue
                 for location in error.locations:
                     row_ids = getattr(location, "row_ids", None)
                     key_columns = getattr(location, "key_columns", None)

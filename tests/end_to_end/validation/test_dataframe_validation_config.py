@@ -339,3 +339,62 @@ class TestBasicValidationConfig:
                 message = error.message
                 assert any(p.search(message) for p in compiled), f"Unexpected error message: {message}"
         assert ret.error_counts[ValidationErrorLevel.ERROR] == 2
+
+    def test_allow_incomplete_reports_invalid_numeric_value(self, get_cache):
+        dataops_adapter_class = ValidationInterface.get_default_adapter_class()
+        validation_adapter = dataops_adapter_class()
+        cache_view = get_cache
+        layout_id = "peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA"
+        layout = cache_view.get(layout_id, "DataLayoutLayout")
+        dataset_series = DatasetSeries.from_peh_datalayout(
+            layout,
+            cache_view=cache_view,
+            apply_context=True,
+        )
+        assert isinstance(dataset_series, DatasetSeries)
+
+        import polars as pl
+
+        fake_dataset_series = {
+            "SAMPLE": pl.DataFrame(
+                {
+                    "id_sample": [
+                        "SMP00123",
+                        "SMP00124",
+                    ],
+                    "matrix": ["UM", "UM"],
+                }
+            ),
+            "SAMPLETIMEPOINT_BS": pl.DataFrame(
+                {
+                    "id_sample": [
+                        "SMP00123",
+                        "SMP00124",
+                    ],
+                    "adults_u_crt": [1.87, "oops"],
+                },
+                strict=False,
+            ),
+        }
+        for dataset_label, fake_dataset in fake_dataset_series.items():
+            data_labels = list(fake_dataset.columns)
+            dataset_series.add_data(
+                dataset_label,
+                fake_dataset,
+                data_labels=data_labels,
+                allow_incomplete=True,
+            )
+
+        sample_tp_dataset = dataset_series["SAMPLETIMEPOINT_BS"]
+        ret = validation_adapter.validate(
+            dataset=sample_tp_dataset,
+            dependent_dataset_series=dataset_series,
+            cache_view=cache_view,
+            allow_incomplete=True,
+        )
+        assert isinstance(ret, ValidationErrorReport)
+        assert ret.total_errors == 1
+        assert ret.error_counts[ValidationErrorLevel.FATAL] == 1
+        assert len(ret.groups) == 1
+        assert len(ret.groups[0].errors) == 1
+        assert "strict_cast(Float64)" in ret.groups[0].errors[0].message

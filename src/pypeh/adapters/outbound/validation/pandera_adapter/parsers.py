@@ -202,6 +202,9 @@ def parse_error_report(error_collector_schema: ErrorCollectorSchema) -> Validati
         for error in group.errors:
             total_errors += 1
             counter[error.level] += 1
+    for error in unexpected_errors:
+        total_errors += 1
+        counter[error.level] += 1
 
     return ValidationErrorReport(
         timestamp=datetime.now().isoformat(),
