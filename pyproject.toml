@@ -8,7 +8,7 @@ readme = "README.md"
 license = "MIT"
 dependencies = [
     "linkml-runtime>=1.9.1",
-    "peh-model>=0.6.3,<0.7.0",
+    "peh-model>=0.7.1,<0.8.0",
     "pydantic-settings",
     "fsspec",
 	"python-ulid>=3.1.0",
@@ -18,7 +18,7 @@ dependencies = [
 core = []
 rocrate-adapter = ["rocrate"]
 dataframe-adapter = [
-    "peh-dataguard>=0.4.6,<1.0",
+    "peh-dataguard>=0.6.0,<1.0",
     "polars",
     "pyarrow",
     "fastexcel",

@@ -29,7 +29,7 @@ from pypeh.core.models.internal_data_layout import (
     JoinSpec,
 )
 from pypeh.core.models.typing import T_DataType
-from pypeh.core.models import graph, validation_dto
+from pypeh.core.models import extract_dto, graph, validation_dto
 from pypeh.core.utils.function_utils import _extract_callable
 
 if TYPE_CHECKING:
@@ -1648,6 +1648,222 @@ class ValidationInterface(DataOpsInterface, Generic[T_DataType]):
         ret = self._validate(to_validate, validation_config)
 
         return ret
+
+
+class DataExtractInterface(DataOpsInterface, Generic[T_DataType]):
+    @abstractmethod
+    def _filter(
+        self,
+        data: T_DataType,
+        config: extract_dto.FilterConfig,
+    ) -> T_DataType:
+        raise NotImplementedError(
+            "Abstract method on class DataExtractInterface."
+        )
+
+    @classmethod
+    def get_default_adapter_class(cls):
+        try:
+            adapter_module = importlib.import_module(
+                "pypeh.adapters.extract.dataframe_adapter"
+            )
+            adapter_class = getattr(adapter_module, "DataFrameExtractAdapter")
+        except Exception as e:
+            logger.error(
+                "Exception encountered while attempting to import a dataguard-based DataFrameExtractAdapter"
+            )
+            raise e
+        return adapter_class
+
+    def build_filter_config(
+        self,
+        filter_expression: peh.FilterExpression | None,
+        dataset_label: str,
+        type_annotations: dict[str, dict[str, ObservablePropertyValueType]],
+        select: list[str] | None = None,
+        name: str | None = None,
+    ) -> extract_dto.FilterConfig:
+        filter_expression = extract_dto.FilterExpression.from_peh(
+            filter_expression,
+            type_annotations=type_annotations,
+            dataset_label=dataset_label,
+        )
+        dependent_contextual_field_references = (
+            filter_expression.dependent_contextual_field_references or {}
+        )
+        return extract_dto.FilterConfig(
+            name=name or dataset_label,
+            filter_expression=filter_expression,
+            select=select,
+            dependent_contextual_field_references=dependent_contextual_field_references,
+        )
+
+    @staticmethod
+    def _merge_filter_type_annotations(
+        reshaped_dataset_series: DatasetSeries[T_DataType],
+        source_dataset_series: DatasetSeries[T_DataType] | None,
+    ) -> dict[str, dict[str, ObservablePropertyValueType]]:
+        """
+        Build type annotations for filter parsing, falling back to the source
+        series for datasets/fields that `extract_from_source` projected away.
+
+        The reshaped series takes precedence; source annotations only fill in
+        datasets or fields that are absent from the reshaped series.
+        """
+        type_annotations = reshaped_dataset_series.get_type_annotations()
+        if source_dataset_series is None:
+            return type_annotations
+        for (
+            dataset_label,
+            source_fields,
+        ) in source_dataset_series.get_type_annotations().items():
+            merged = dict(source_fields)
+            merged.update(type_annotations.get(dataset_label, {}))
+            type_annotations[dataset_label] = merged
+        return type_annotations
+
+    @staticmethod
+    def _resolve_filter_dependency_dataset(
+        dependent_dataset_label: str,
+        dependent_field_labels: set[str],
+        reshaped_dataset_series: DatasetSeries[T_DataType],
+        source_dataset_series: DatasetSeries[T_DataType] | None,
+    ) -> Dataset:
+        """
+        Locate the Dataset providing a filter's dependency fields.
+
+        Prefer the reshaped series, but fall back to `source_dataset_series`
+        when the referenced fields were dropped during extraction (e.g. a
+        condition column that is not itself an exported output).
+        """
+
+        def _satisfies(dataset: Dataset | None) -> bool:
+            if dataset is None or dataset.data is None:
+                return False
+            return set(dependent_field_labels).issubset(
+                set(dataset.get_element_labels())
+            )
+
+        candidate = reshaped_dataset_series[dependent_dataset_label]
+        if _satisfies(candidate):
+            assert candidate is not None
+            return candidate
+
+        if source_dataset_series is not None:
+            source_candidate = source_dataset_series[dependent_dataset_label]
+            if _satisfies(source_candidate):
+                assert source_candidate is not None
+                return source_candidate
+
+        me = (
+            f"Filter references fields "
+            f"{sorted(dependent_field_labels)!r} from dataset "
+            f"'{dependent_dataset_label}' that are not available in the "
+            "reshaped DatasetSeries"
+        )
+        if source_dataset_series is None:
+            me += (
+                " and no `source_dataset_series` fallback was provided. Pass "
+                "the pre-extraction source series so filter dependencies that "
+                "were projected away can be resolved."
+            )
+        else:
+            me += " or the provided `source_dataset_series` fallback."
+        logger.error(me)
+        raise ValueError(me)
+
+    def apply_filter(
+        self,
+        reshaped_dataset_series: DatasetSeries[T_DataType],
+        filter_expression: peh.FilterExpression | None,
+        dataset_label: str,
+        source_dataset_series: DatasetSeries[T_DataType] | None = None,
+    ) -> DatasetSeries[T_DataType]:
+        """
+        Apply a single DataLayoutSection's filter (peh.DataFilter.filter_expression)
+        to the already-reshaped `dataset_label` part of `reshaped_dataset_series`,
+        resolving any cross-DataLayoutSection joins the filter depends on.
+
+        A filter predicate may reference fields that `extract_from_source`
+        projected away (e.g. exporting a single non-identifying column while
+        filtering on a condition column that is not itself exported). When such
+        a dependency cannot be satisfied from `reshaped_dataset_series`, it is
+        resolved against the optional `source_dataset_series` fallback.
+        """
+        base_dataset = reshaped_dataset_series.parts[dataset_label]
+        assert base_dataset is not None
+        assert base_dataset.data is not None
+        to_filter = base_dataset.data
+
+        select = base_dataset.get_element_labels()
+        type_annotations = self._merge_filter_type_annotations(
+            reshaped_dataset_series, source_dataset_series
+        )
+        filter_config = self.build_filter_config(
+            filter_expression=filter_expression,
+            dataset_label=dataset_label,
+            type_annotations=type_annotations,
+            select=select,
+        )
+
+        # check whether the filter references fields in other datasets and
+        # therefore requires a join (cross DataLayoutSection filtering)
+        dependent_contextual_field_references = (
+            filter_config.dependent_contextual_field_references
+        )
+        join_required = bool(dependent_contextual_field_references)
+
+        if join_required:
+            join_specs: list[JoinSpec] = []
+            required_fields_by_dataset: dict[str, set[str]] = defaultdict(set)
+            available_data: dict[str, T_DataType] = {}
+            for (
+                dependent_dataset_label,
+                dependent_field_labels,
+            ) in dependent_contextual_field_references.items():
+                other_dataset = self._resolve_filter_dependency_dataset(
+                    dependent_dataset_label,
+                    dependent_field_labels,
+                    reshaped_dataset_series,
+                    source_dataset_series,
+                )
+                other_data = other_dataset.data
+                assert other_data is not None
+                available_data[dependent_dataset_label] = other_data
+                join_spec = base_dataset.resolve_join(other_dataset)
+                if join_spec is None:
+                    me = (
+                        f"Cannot resolve explicit join path between "
+                        f"'{dataset_label}' and '{dependent_dataset_label}'. "
+                        "Add a `foreign_key_link` to the DataLayout elements."
+                    )
+                    logger.error(me)
+                    raise ValueError(me)
+                join_specs.append(join_spec)
+                required_fields_by_dataset[dependent_dataset_label].update(
+                    dependent_field_labels
+                )
+
+            join_plan = JoinPlan.from_join_specs(
+                base_dataset_label=dataset_label,
+                join_specs=join_specs,
+                required_fields_by_dataset=required_fields_by_dataset,
+                how="left",
+            )
+            to_filter = self.execute_join_plan(
+                base_data=to_filter,
+                datasets=available_data,
+                join_plan=join_plan,
+            )
+
+        filtered = self._filter(to_filter, filter_config)
+        reshaped_dataset_series.add_data(
+            dataset_label,
+            filtered,
+            data_labels=self.get_element_labels(filtered),
+        )
+
+        return reshaped_dataset_series
 
 
 class DataEnrichmentInterface(DataOpsInterface, Generic[T_DataType]):

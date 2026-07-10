@@ -4,8 +4,8 @@ import pytest
 
 from peh_model.peh import (
     DataImportConfig,
-    DataImportSectionMapping,
-    DataImportSectionMappingLink,
+    DataSectionMapping,
+    DataSectionMappingLink,
     DataLayout,
 )
 
@@ -91,15 +91,15 @@ class TestSessionValidation:
         data_import_config = DataImportConfig(
             id="peh:IMPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout="peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
-            section_mapping=DataImportSectionMapping(
+            section_mapping=DataSectionMapping(
                 section_mapping_links=[
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLE",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_METADATA"
                         ],
                     ),
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLETIMEPOINT_BSS",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_TIMEPOINT"
@@ -162,15 +162,15 @@ class TestSessionValidation:
         data_import_config = DataImportConfig(
             id="peh:IMPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout="peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
-            section_mapping=DataImportSectionMapping(
+            section_mapping=DataSectionMapping(
                 section_mapping_links=[
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLE",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_METADATA"
                         ],
                     ),
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLETIMEPOINT_BSS",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_TIMEPOINT"
@@ -223,9 +223,9 @@ class TestSessionValidation:
         data_import_config = DataImportConfig(
             id="peh:IMPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout="peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
-            section_mapping=DataImportSectionMapping(
+            section_mapping=DataSectionMapping(
                 section_mapping_links=[
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLETIMEPOINT_BSS",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_TIMEPOINT"
@@ -276,9 +276,9 @@ class TestSessionValidation:
         data_import_config = DataImportConfig(
             id="peh:IMPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout="peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
-            section_mapping=DataImportSectionMapping(
+            section_mapping=DataSectionMapping(
                 section_mapping_links=[
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLETIMEPOINT_BSS",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_TIMEPOINT"
@@ -363,9 +363,9 @@ class TestSessionValidation:
         data_import_config = DataImportConfig(
             id="peh:IMPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout="peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
-            section_mapping=DataImportSectionMapping(
+            section_mapping=DataSectionMapping(
                 section_mapping_links=[
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLETIMEPOINT_BSS",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_TIMEPOINT"
@@ -445,9 +445,9 @@ class TestSessionValidation:
         data_import_config = DataImportConfig(
             id="peh:IMPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout="peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
-            section_mapping=DataImportSectionMapping(
+            section_mapping=DataSectionMapping(
                 section_mapping_links=[
-                    DataImportSectionMappingLink(
+                    DataSectionMappingLink(
                         section="SAMPLE_METADATA_SECTION_SAMPLETIMEPOINT_BSS",
                         observation_id_list=[
                             "peh:VALIDATION_TEST_SAMPLE_TIMEPOINT"
