@@ -84,10 +84,37 @@ observation_designs:
     specification_category: identifying
   - observable_property: peh:mean_birthweight
     specification_category: optional
+    calculation_design:
+      calculation_name: mean
+      calculation_implementation:
+        function_name: pypeh.adapters.aggregation.polars_adapter.statistics.statistics_mean
+        function_kwargs:
+        - contextual_field_reference:
+            dataset_label: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED
+            field_label: peh:N1BirthWeight
   - observable_property: peh:sem_birthweight
     specification_category: optional
+    calculation_design:
+      calculation_name: standard_error
+      calculation_implementation:
+        function_name: pypeh.adapters.aggregation.polars_adapter.statistics.statistics_sem
+        function_kwargs:
+        - contextual_field_reference:
+            dataset_label: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED
+            field_label: peh:N1BirthWeight
   - observable_property: peh:mean_birthlength
     specification_category: optional
+    calculation_design:
+      calculation_name: mean
+      calculation_implementation:
+        function_name: pypeh.adapters.aggregation.polars_adapter.statistics.statistics_mean
+        function_kwargs:
+        - contextual_field_reference:
+            dataset_label: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED
+            field_label: peh:N1BirthLength
+        - mapping_name: cutoff
+          value: '0.75'
+          value_type: float
 - id: peh:TEST_SUMMARY2_DESIGN
   observation_result_type: calculation
   observable_entity_type: person
@@ -98,6 +125,14 @@ observation_designs:
     specification_category: identifying
   - observable_property: peh:mean_birthweight2
     specification_category: optional
+    calculation_design:
+      calculation_name: mean
+      calculation_implementation:
+        function_name: pypeh.adapters.aggregation.polars_adapter.statistics.statistics_mean
+        function_kwargs:
+        - contextual_field_reference:
+            dataset_label: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECT_ENRICHED_BASE
+            field_label: peh:N2BirthWeight
 observations:
 - id: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED
   name: ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED

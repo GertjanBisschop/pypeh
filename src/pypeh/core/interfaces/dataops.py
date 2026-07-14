@@ -15,7 +15,7 @@ from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from peh_model import peh
-from typing import TYPE_CHECKING, Callable, Generic, Literal, Sequence
+from typing import TYPE_CHECKING, Callable, Generic, Literal, Sequence, cast
 
 from pypeh.core.cache.containers import (
     CacheContainerView,
@@ -318,7 +318,9 @@ class DataOpsInterface(Generic[T_DataType]):
                 "Cannot use target label collision strategy "
                 "'prefix_source_dataset' without a source DatasetSeries."
             )
-        calculation_design = observable_property.calculation_design
+        calculation_design = (
+            observable_property.calculation_design
+        )  # TODO: extract from ObservablePropertySpecification instead
         if calculation_design is None:
             raise ValueError(
                 "Cannot use target label collision strategy "
@@ -1835,9 +1837,11 @@ class DataEnrichmentInterface(DataOpsInterface, Generic[T_DataType]):
                 target_dataset_label, target_field_label = (
                     target_contextual_field_ref
                 )
-                if observable_property.calculation_design is not None:
+                if observable_property_spec.calculation_design is not None:
                     # EXTRA INFO FROM CALCULATION DESIGN AND UPDATE DEPENDENCY GRAPH
-                    calculation_design = observable_property.calculation_design
+                    calculation_design = (
+                        observable_property_spec.calculation_design
+                    )
                     assert isinstance(
                         calculation_design, peh.CalculationDesign
                     )
@@ -2219,8 +2223,10 @@ class AggregationInterface(DataOpsInterface, Generic[T_DataType]):
                     stratification_ids.append(observable_property_id)
 
                 # EXTRACT CALCULATION DESIGN
-                if observable_property.calculation_design is not None:
-                    calculation_design = observable_property.calculation_design
+                if observable_property_spec.calculation_design is not None:
+                    calculation_design = (
+                        observable_property_spec.calculation_design
+                    )
                     assert isinstance(
                         calculation_design, peh.CalculationDesign
                     )
@@ -2238,9 +2244,13 @@ class AggregationInterface(DataOpsInterface, Generic[T_DataType]):
                     function_name = calculation_implementation.function_name
                     assert function_name is not None
                     map_fn = _extract_callable(function_name)
+                    function_kwargs = cast(
+                        list[peh.CalculationKeywordArgument] | None,
+                        calculation_implementation.function_kwargs,
+                    )
                     value_col, stat_kwargs = (
                         self._resolve_aggregation_function_kwargs(
-                            calculation_implementation.function_kwargs,
+                            function_kwargs,
                             source_obs=source_obs,
                             source_dataset_series=source_dataset_series,
                         )
