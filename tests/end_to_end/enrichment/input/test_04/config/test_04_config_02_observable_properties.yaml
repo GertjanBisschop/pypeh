@@ -1353,23 +1353,6 @@ observable_properties:
   ui_label: chol_imputed
   description: Imputed Cholesterol in sample
   value_type: decimal
-  calculation_design:
-    calculation_name: chol_medium_bound_imputation
-    calculation_implementation:
-      function_name: compehndly.entrypoints.medium_bound_imputation
-      function_kwargs:
-      - mapping_name: measurement
-        contextual_field_reference:
-          dataset_label: peh:VALIDATION_TEST_SAMPLE_SAMPLETIMEPOINT_BWB
-          field_label: chol
-      - mapping_name: loq
-        contextual_field_reference:
-          dataset_label: peh:VALIDATION_TEST_SAMPLE_SAMPLETIMEPOINT_BWB
-          field_label: chol_loq
-      - mapping_name: lod
-        contextual_field_reference:
-          dataset_label: peh:VALIDATION_TEST_SAMPLE_SAMPLETIMEPOINT_BWB
-          field_label: chol_lod
 - id: chol_lod
   name: chol_lod
   description: lod associated with the cholesterol measurement of the sample

@@ -47,6 +47,26 @@ observation_designs:
     specification_category: optional
   - observable_property: peh:agemonths
     specification_category: optional
+    calculation_design:
+      calculation_name: age_in_months_from_birth_and_interview_dates
+      calculation_implementation:
+        function_name: tests.core.models.enrichment_functions.age_in_months_from_birth_and_interview_dates
+        function_kwargs:
+        - mapping_name: birth_date
+          contextual_field_reference:
+            dataset_label: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED
+            field_label: N1Birthdate
+          process_state: clean
+          unit: UNITLESS
+        - mapping_name: interview_date
+          contextual_field_reference:
+            dataset_label: peh:ENRICHMENT_TEST_OBSERVATION_SUBJECTUNIQUE_INGESTED
+            field_label: Todaysdate
+          process_state: clean
+          unit: UNITLESS
+        function_results:
+        - value_type: integer
+          unit: MO
   - observable_property: peh:N2Birthweight
     specification_category: optional
 observations:

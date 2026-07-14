@@ -1916,6 +1916,22 @@ class TestDatasetSeriesMods(abc.ABC):
         )
         container.add(source_observation)
         container.add(target_observation)
+        calculation_design = CalculationDesign(
+            calculation_implementation=CalculationImplementation(
+                function_name=(
+                    "tests.core.interfaces.dataops.test_dataops.add_one"
+                ),
+                function_kwargs=[
+                    CalculationKeywordArgument(
+                        mapping_name="measurement",
+                        contextual_field_reference=ContextualFieldReference(
+                            dataset_label="obs:source",
+                            field_label="src:two",
+                        ),
+                    )
+                ],
+            )
+        )
         container.add(
             ObservationDesign(
                 id="design:source",
@@ -1956,6 +1972,7 @@ class TestDatasetSeriesMods(abc.ABC):
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=calculation_design,
                     ),
                 ],
             )
@@ -1986,24 +2003,6 @@ class TestDatasetSeriesMods(abc.ABC):
                 id="derived:result",
                 short_name="result",
                 value_type="float",
-                calculation_design=CalculationDesign(
-                    calculation_implementation=CalculationImplementation(
-                        function_name=(
-                            "tests.core.interfaces.dataops.test_dataops.add_one"
-                        ),
-                        function_kwargs=[
-                            CalculationKeywordArgument(
-                                mapping_name="measurement",
-                                contextual_field_reference=(
-                                    ContextualFieldReference(
-                                        dataset_label="obs:source",
-                                        field_label="src:two",
-                                    )
-                                ),
-                            )
-                        ],
-                    )
-                ),
             )
         )
 
@@ -2765,6 +2764,22 @@ class TestAggregation(abc.ABC):
         )
         container.add(source_observation)
         container.add(target_observation)
+        calculation_design = CalculationDesign(
+            calculation_implementation=CalculationImplementation(
+                function_name=(
+                    "pypeh.adapters.aggregation.polars_adapter.statistics."
+                    "statistics_count_n"
+                ),
+                function_kwargs=[
+                    CalculationKeywordArgument(
+                        contextual_field_reference=ContextualFieldReference(
+                            dataset_label="obs:source",
+                            field_label="src:measure",
+                        )
+                    )
+                ],
+            )
+        )
         container.add(
             ObservationDesign(
                 id="design:source",
@@ -2787,29 +2802,15 @@ class TestAggregation(abc.ABC):
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=calculation_design,
                     ),
                     ObservablePropertySpecification(
                         observable_property="target:count_two",
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=calculation_design,
                     ),
-                ],
-            )
-        )
-        calculation_design = CalculationDesign(
-            calculation_implementation=CalculationImplementation(
-                function_name=(
-                    "pypeh.adapters.aggregation.polars_adapter.statistics."
-                    "statistics_count_n"
-                ),
-                function_kwargs=[
-                    CalculationKeywordArgument(
-                        contextual_field_reference=ContextualFieldReference(
-                            dataset_label="obs:source",
-                            field_label="src:measure",
-                        )
-                    )
                 ],
             )
         )
@@ -2826,7 +2827,6 @@ class TestAggregation(abc.ABC):
                 short_name="count",
                 ui_label="count",
                 value_type="integer",
-                calculation_design=calculation_design,
             )
         )
         container.add(
@@ -2835,7 +2835,6 @@ class TestAggregation(abc.ABC):
                 short_name="count",
                 ui_label="count",
                 value_type="integer",
-                calculation_design=calculation_design,
             )
         )
 
