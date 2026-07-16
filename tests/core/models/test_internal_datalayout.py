@@ -296,7 +296,10 @@ class TestInternalDataLayout:
             "subject_id",
         )
 
-    def test_apply_context(self, get_cache):
+    def test_legacy_observable_property_validation_apply_context(
+        self, get_cache
+    ):
+        """Remove with legacy ObservableProperty validation support."""
         cache_view = get_cache
         layout_id = "peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA"
         layout = get_cache.get(layout_id, "DataLayoutLayout")

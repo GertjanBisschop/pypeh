@@ -2,6 +2,7 @@ import pytest
 import abc
 import importlib
 import re
+import peh_model.peh as peh
 
 from datetime import date
 from typing import Protocol, Generic
@@ -140,6 +141,17 @@ class TestValidation(abc.ABC):
         src_path = "./input/ValidationExamples/validation_test_03_corrected_config.yaml"
         cache_view = self.get_container(src_path)
         return cache_view
+
+    @staticmethod
+    def get_data_layout_element(cache_view, dataset, element_label):
+        layout_section = cache_view.require(
+            dataset.described_by, "DataLayoutSection"
+        )
+        return next(
+            element
+            for element in layout_section.elements
+            if element.label == element_label
+        )
 
     def test_getting_default_adapter_from_interface(self):
         adapter_class = ValidationInterface.get_default_adapter_class()
@@ -541,7 +553,7 @@ class TestValidation(abc.ABC):
         )
         assert isinstance(data_layout, DataLayout)
         dataset_series = DatasetSeries.from_peh_datalayout(
-            data_layout=data_layout, cache_view=cache_view, apply_context=True
+            data_layout=data_layout, cache_view=cache_view
         )
         dataset = dataset_series.get("SAMPLETIMEPOINT_BSS")
         assert dataset is not None
@@ -560,7 +572,7 @@ class TestValidation(abc.ABC):
         )
         assert isinstance(data_layout, DataLayout)
         dataset_series = DatasetSeries.from_peh_datalayout(
-            data_layout=data_layout, cache_view=cache_view, apply_context=True
+            data_layout=data_layout, cache_view=cache_view
         )
         dataset = dataset_series.get("SAMPLETIMEPOINT_BSS")
         assert dataset is not None
@@ -582,7 +594,7 @@ class TestValidation(abc.ABC):
         )
         assert isinstance(data_layout, DataLayout)
         dataset_series = DatasetSeries.from_peh_datalayout(
-            data_layout=data_layout, cache_view=cache_view, apply_context=True
+            data_layout=data_layout, cache_view=cache_view
         )
         type_annotations = dataset_series.get_type_annotations()
         dataset = dataset_series.get("SAMPLETIMEPOINT_BSS")
@@ -592,6 +604,9 @@ class TestValidation(abc.ABC):
             dataset_schema_element=dataset_schema_element,
             type_annotations=type_annotations,
             cache_view=cache_view,
+            data_layout_element=self.get_data_layout_element(
+                cache_view, dataset, "chol"
+            ),
         )
         assert cv.validations is not None
         collect_messages = [
@@ -601,6 +616,94 @@ class TestValidation(abc.ABC):
         found = any(re.search(pattern, msg) for msg in collect_messages)
         assert found
 
+    def test_data_layout_element_validation_designs_take_precedence(self):
+        adapter = self.get_adapter()
+        cache_view = self.get_container_validation_example_03()
+        data_layout = cache_view.get(
+            "peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA", "DataLayout"
+        )
+        dataset_series = DatasetSeries.from_peh_datalayout(
+            data_layout=data_layout, cache_view=cache_view
+        )
+        dataset = dataset_series.get("SAMPLETIMEPOINT_BSS")
+        assert dataset is not None
+        schema_element = dataset.get_schema_element_by_label("chol")
+        assert schema_element is not None
+        observable_property = cache_view.get(
+            schema_element.observable_property_id, "ObservableProperty"
+        )
+        observable_property.validation_designs = [
+            peh.ValidationDesign(
+                validation_name="legacy_property_rule",
+                validation_expression=peh.ValidationExpression(
+                    validation_command="is_null"
+                ),
+            )
+        ]
+        data_layout_element = self.get_data_layout_element(
+            cache_view, dataset, "chol"
+        )
+        data_layout_element.validation_designs = [
+            peh.ValidationDesign(
+                validation_name="layout_element_rule",
+                validation_expression=peh.ValidationExpression(
+                    validation_command="is_not_null"
+                ),
+            )
+        ]
+
+        column_validation = adapter.build_column_validation(
+            dataset_schema_element=schema_element,
+            type_annotations=dataset_series.get_type_annotations(),
+            cache_view=cache_view,
+            data_layout_element=data_layout_element,
+            dataset_label=dataset.label,
+        )
+
+        validation_names = {
+            validation.name for validation in column_validation.validations
+        }
+        assert "layout_element_rule" in validation_names
+        assert "legacy_property_rule" not in validation_names
+
+    def test_legacy_observable_property_validation_designs_are_supported(self):
+        """Remove with legacy ObservableProperty validation support."""
+        adapter = self.get_adapter()
+        cache_view = self.get_container_validation_example_03()
+        data_layout = cache_view.get(
+            "peh:CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA", "DataLayout"
+        )
+        dataset_series = DatasetSeries.from_peh_datalayout(
+            data_layout=data_layout, cache_view=cache_view
+        )
+        dataset = dataset_series.get("SAMPLETIMEPOINT_BSS")
+        assert dataset is not None
+        schema_element = dataset.get_schema_element_by_label("chol")
+        assert schema_element is not None
+        observable_property = cache_view.get(
+            schema_element.observable_property_id, "ObservableProperty"
+        )
+        observable_property.validation_designs = [
+            peh.ValidationDesign(
+                validation_name="legacy_property_rule",
+                validation_expression=peh.ValidationExpression(
+                    validation_command="is_not_null"
+                ),
+            )
+        ]
+
+        column_validation = adapter.build_column_validation(
+            dataset_schema_element=schema_element,
+            type_annotations=dataset_series.get_type_annotations(),
+            cache_view=cache_view,
+            dataset_label=dataset.label,
+        )
+
+        assert any(
+            validation.name == "legacy_property_rule"
+            for validation in column_validation.validations
+        )
+
     def test_build_column_validation_from_observable_property_bounds(self):
         adapter = self.get_adapter()
         cache_view = self.get_container_validation_example_03()
@@ -609,7 +712,7 @@ class TestValidation(abc.ABC):
         )
         assert isinstance(data_layout, DataLayout)
         dataset_series = DatasetSeries.from_peh_datalayout(
-            data_layout=data_layout, cache_view=cache_view, apply_context=True
+            data_layout=data_layout, cache_view=cache_view
         )
         type_annotations = dataset_series.get_type_annotations()
         dataset = dataset_series.get("SAMPLETIMEPOINT_BSS")
