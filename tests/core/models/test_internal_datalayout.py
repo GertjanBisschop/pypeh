@@ -335,9 +335,9 @@ class TestInternalDataLayout:
         data_export_config = peh.DataExportConfig(
             id="peh:EXPORT_CONFIG_CODEBOOK_v2.4_LAYOUT_SAMPLE_METADATA",
             layout=existing.layout,
-            section_mapping=peh.DataImportSectionMapping(
+            section_mapping=peh.DataSectionMapping(
                 section_mapping_links=[
-                    peh.DataImportSectionMappingLink(
+                    peh.DataSectionMappingLink(
                         section=link.section,
                         observation_id_list=list(link.observation_id_list),
                     )

@@ -122,9 +122,9 @@ def _populate_export_cache(session: Session) -> peh.DataExportConfig:
     data_export_config = peh.DataExportConfig(
         id="peh:LAB_EXPORT_CONFIG",
         layout="peh:LAB_EXPORT_LAYOUT",
-        section_mapping=peh.DataImportSectionMapping(
+        section_mapping=peh.DataSectionMapping(
             section_mapping_links=[
-                peh.DataImportSectionMappingLink(
+                peh.DataSectionMappingLink(
                     section="peh:LAB_EXPORT_SECTION",
                     observation_id_list=["peh:obs_lab"],
                 )

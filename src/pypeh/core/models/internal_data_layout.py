@@ -836,11 +836,11 @@ class DatasetSeries(Resource, Generic[T_DataType]):
 
         # add Observation links
         section_mapping = data_config.section_mapping
-        assert isinstance(section_mapping, peh.DataImportSectionMapping)
+        assert isinstance(section_mapping, peh.DataSectionMapping)
         section_mapping_links = section_mapping.section_mapping_links
         assert isinstance(section_mapping_links, list)
         for link in section_mapping_links:
-            assert isinstance(link, peh.DataImportSectionMappingLink)
+            assert isinstance(link, peh.DataSectionMappingLink)
             section_id = link.section
             assert isinstance(section_id, str)
             layout_section = cache_view.require(
