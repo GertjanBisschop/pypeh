@@ -292,9 +292,8 @@ class DatasetSchema:
         this_dataset: str,  # temporary fix
     ):
         """
-        ObservableProperties require context for:
-        - CalculationDesigns
-        - ValidationDesigns
+        LEGACY VALIDATION SUPPORT: remove this method with support for
+        ObservableProperty.validation_designs.
         """
         for schema_element in self.elements.values():
             observable_property_id = schema_element.observable_property_id

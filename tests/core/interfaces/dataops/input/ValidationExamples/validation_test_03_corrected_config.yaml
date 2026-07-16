@@ -89,6 +89,54 @@ layouts:
         label: peh:id_sample
     - label: chol
       observable_property: peh:chol
+      validation_designs:
+      - validation_expression:
+          validation_condition_expression:
+            validation_subject_contextual_field_references:
+            - dataset_label: SAMPLE
+              field_label: matrix
+            validation_command: is_in
+            validation_arg_values:
+            - BWB
+            - BP
+            - BS
+            - CBWB
+            - CBP
+            - CBS
+            - BWBG
+            - BPG
+            - BSG
+            - CBWBG
+            - CBPG
+            - CBSG
+            - DBS
+            - VAMS
+          validation_arg_expressions:
+          - validation_subject_contextual_field_references:
+            - dataset_label: SAMPLETIMEPOINT_BSS
+              field_label: chol
+            validation_command: is_greater_than_or_equal_to
+            validation_arg_values:
+            - '50'
+        conditional: "IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BM,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,BMG,DBS,VAMS) THEN chol IS not empty; IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,DBS,VAMS) THEN chol [50,250]; IF matrix IS (BM,BMG) THEN chol [5,100]"
+        validation_error_message_template: "IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BM,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,BMG,DBS,VAMS) THEN chol IS not empty; IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,DBS,VAMS) THEN chol [50,250]; IF matrix IS (BM,BMG) THEN chol [5,100]"
+      - validation_expression:
+          validation_condition_expression:
+            validation_subject_contextual_field_references:
+            - dataset_label: SAMPLE
+              field_label: matrix
+            validation_command: is_in
+            validation_arg_values:
+            - BM
+            - BMG
+          validation_arg_expressions:
+          - validation_subject_contextual_field_references:
+            - dataset_label: SAMPLETIMEPOINT_BSS
+              field_label: chol
+            validation_command: is_greater_than_or_equal_to
+            validation_arg_values:
+            - '5'
+        conditional: "IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BM,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,BMG,DBS,VAMS) THEN chol IS not empty; IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,DBS,VAMS) THEN chol [50,250]; IF matrix IS (BM,BMG) THEN chol [5,100]"
     - label: chol_lod
       observable_property: peh:chol_lod
     - label: chol_loq
@@ -221,56 +269,6 @@ observable_properties:
   relevant_observation_types:
   - questionnaire
   short_name: chol
-  validation_designs:
-  - validation_expression:
-      validation_condition_expression:
-        validation_subject_contextual_field_references:
-        - field_label: peh:matrix
-        validation_command: is_in
-        validation_arg_values:
-        - BWB
-        - BP
-        - BS
-        - CBWB
-        - CBP
-        - CBS
-        - BWBG
-        - BPG
-        - BSG
-        - CBWBG
-        - CBPG
-        - CBSG
-        - DBS
-        - VAMS
-      validation_arg_expressions:
-      - validation_subject_contextual_field_references:
-        - field_label: peh:chol
-        validation_command: is_greater_than_or_equal_to
-        validation_arg_values:
-        - '50'
-    conditional: "IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BM,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,BMG,DBS,VAMS)\
-      \  THEN chol IS not empty; \n\nIF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,DBS,VAMS)\
-      \  THEN chol [50,250]; \n\nIF matrix IS (BM,BMG)  THEN chol [5,100]"
-    validation_error_message_template: "IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BM,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,BMG,DBS,VAMS)\
-      \  THEN chol IS not empty; \n\nIF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,DBS,VAMS)\
-      \  THEN chol [50,250]; \n\nIF matrix IS (BM,BMG)  THEN chol [5,100]"
-  - validation_expression:
-      validation_condition_expression:
-        validation_subject_contextual_field_references:
-        - field_label: peh:matrix
-        validation_command: is_in
-        validation_arg_values:
-        - BM
-        - BMG
-      validation_arg_expressions:
-      - validation_subject_contextual_field_references:
-        - field_label: peh:chol
-        validation_command: is_greater_than_or_equal_to
-        validation_arg_values:
-        - '5'
-    conditional: "IF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BM,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,BMG,DBS,VAMS)\
-      \  THEN chol IS not empty; \n\nIF matrix IS (BWB,BP,BS,CBWB,CBP,CBS,BWBG,BPG,BSG,CBWBG,CBPG,CBSG,DBS,VAMS)\
-      \  THEN chol [50,250]; \n\nIF matrix IS (BM,BMG)  THEN chol [5,100]"
 - id: peh:chol_lod
   name: chol_lod
   description: lod associated with the cholesterol measurement of the sample

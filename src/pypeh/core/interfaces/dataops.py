@@ -1271,6 +1271,7 @@ class ValidationInterface(DataOpsInterface, Generic[T_DataType]):
         dataset_schema_element: DatasetSchemaElement,
         type_annotations: dict[str, dict[str, ObservablePropertyValueType]],
         cache_view: CacheContainerView,
+        data_layout_element: peh.DataLayoutElement | None = None,
         dataset_label: str | None = None,
         column_has_only_empty_values: bool = False,
         allow_incomplete: bool = False,
@@ -1310,9 +1311,18 @@ class ValidationInterface(DataOpsInterface, Generic[T_DataType]):
         if apply_property_validation:
             min_value = getattr(observable_property, "min", None)
             max_value = getattr(observable_property, "max", None)
-            if validation_designs := getattr(
-                observable_property, "validation_designs", None
-            ):
+            validation_designs = getattr(
+                data_layout_element, "validation_designs", None
+            )
+            if not validation_designs:
+                # LEGACY VALIDATION SUPPORT: remove this fallback when
+                # ObservableProperty.validation_designs is no longer supported.
+                # A DataLayoutElement with validation designs always takes
+                # precedence over property-owned designs.
+                validation_designs = getattr(
+                    observable_property, "validation_designs", None
+                )
+            if validation_designs:
                 validations.extend(
                     [
                         validation_dto.ValidationDesign.from_peh(
@@ -1414,6 +1424,18 @@ class ValidationInterface(DataOpsInterface, Generic[T_DataType]):
         allow_incomplete: bool = False,
     ) -> list[validation_dto.ColumnValidation]:
         column_validations: list[validation_dto.ColumnValidation] = []
+        layout_section_id = dataset.described_by
+        layout_elements_by_label: dict[str, peh.DataLayoutElement] = {}
+        if layout_section_id is not None:
+            layout_section = cache_view.require(
+                layout_section_id, "DataLayoutSection"
+            )
+            assert isinstance(layout_section, peh.DataLayoutSection)
+            layout_elements_by_label = {
+                element.label: element
+                for element in layout_section.elements or []
+                if element.label is not None
+            }
         column_labels = dataset.get_element_labels()
         assert column_labels is not None
         for column_label in column_labels:
@@ -1435,6 +1457,7 @@ class ValidationInterface(DataOpsInterface, Generic[T_DataType]):
                 dataset_schema_element=dataset_schema_element,
                 cache_view=cache_view,
                 type_annotations=type_annotations,
+                data_layout_element=layout_elements_by_label.get(column_label),
                 dataset_label=dataset.label,
                 column_has_only_empty_values=column_has_only_empty_values,
                 allow_incomplete=allow_incomplete,
