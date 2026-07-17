@@ -311,10 +311,6 @@ class DatasetSchema:
                         expression, context, this_dataset=this_dataset
                     )
 
-            # CALCULATION DESIGN EXCLUDED FOR NOW
-            # if observable_property.calculation_design is not None:
-            #    pass
-
     def __len__(self):
         return len(self.elements)
 

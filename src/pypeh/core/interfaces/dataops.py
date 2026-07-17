@@ -311,6 +311,7 @@ class DataOpsInterface(Generic[T_DataType]):
     def _infer_source_dataset_label_for_calculation(
         self,
         observable_property: peh.ObservableProperty,
+        observable_property_spec: peh.ObservablePropertySpecification,
         source_dataset_series: DatasetSeries | None,
     ) -> str:
         if source_dataset_series is None:
@@ -318,9 +319,7 @@ class DataOpsInterface(Generic[T_DataType]):
                 "Cannot use target label collision strategy "
                 "'prefix_source_dataset' without a source DatasetSeries."
             )
-        calculation_design = (
-            observable_property.calculation_design
-        )  # TODO: extract from ObservablePropertySpecification instead
+        calculation_design = observable_property_spec.calculation_design
         if calculation_design is None:
             raise ValueError(
                 "Cannot use target label collision strategy "
@@ -328,6 +327,7 @@ class DataOpsInterface(Generic[T_DataType]):
                 f"{observable_property.id!r} because it has no calculation "
                 "design."
             )
+        assert isinstance(calculation_design, peh.CalculationDesign)
         calculation_implementation = (
             calculation_design.calculation_implementation
         )
@@ -378,6 +378,7 @@ class DataOpsInterface(Generic[T_DataType]):
         self,
         element_label: str,
         observable_property: peh.ObservableProperty,
+        observable_property_spec: peh.ObservablePropertySpecification,
         *,
         label_collision_strategy: LabelCollisionStrategy,
         source_dataset_series: DatasetSeries | None,
@@ -387,6 +388,7 @@ class DataOpsInterface(Generic[T_DataType]):
         elif label_collision_strategy == "prefix_source_dataset":
             prefix = self._infer_source_dataset_label_for_calculation(
                 observable_property,
+                observable_property_spec,
                 source_dataset_series,
             )
         else:
@@ -450,6 +452,12 @@ class DataOpsInterface(Generic[T_DataType]):
             ],
         ] = defaultdict(list)
         for observable_property_spec in observable_property_specs:
+            assert isinstance(
+                observable_property_spec, peh.ObservablePropertySpecification
+            )
+            assert isinstance(
+                observable_property_spec.observable_property, str
+            )
             observable_property = cache_view.require(
                 observable_property_spec.observable_property,
                 "ObservableProperty",
@@ -483,6 +491,7 @@ class DataOpsInterface(Generic[T_DataType]):
                     self._resolve_target_element_label_collision(
                         element_label,
                         observable_property,
+                        observable_property_spec,
                         label_collision_strategy=label_collision_strategy,
                         source_dataset_series=source_dataset_series,
                     )

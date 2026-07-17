@@ -87,6 +87,23 @@ def _assert_dataset_series_has_data(dataset_series):
     assert datasets_with_data
 
 
+def _assert_dataset_has_elements(
+    dataset_series,
+    dataset_label: str,
+    expected_elements: set[str],
+):
+    dataset = dataset_series[dataset_label]
+    assert dataset is not None
+
+    schema_labels = set(dataset.get_element_labels())
+    assert expected_elements <= schema_labels
+
+    data = dataset.data
+    assert data is not None
+    data_labels = set(data.columns)
+    assert expected_elements <= data_labels
+
+
 def _assert_validation_reports_are_well_formed(validation_reports):
     assert isinstance(validation_reports, dict)
     assert validation_reports
@@ -152,15 +169,18 @@ def test_parc_aligned_study_dataops_roundtrip(
     )
 
     _assert_dataset_series_has_data(enriched_dataset_series)
-
-    dest = session.dump_tabular_dataset_series(
+    _assert_dataset_has_elements(
         enriched_dataset_series,
-        output_path=str(tmp_path / "roundtrip"),
-        connection_label=CONNECTION_LABEL,
-        file_format="xlsx",
+        "adults",
+        {
+            "cdcca_sg",
+            "tdcca_sg",
+            "sumdcca",
+            "sumdcca_sg",
+            "lipid_enz_harm",
+            "dona_lip",
+        },
     )
-    assert len(dest) == 1
-    assert dest[0].split("/")[-1] == enriched_dataset_series.label + ".xlsx"
 
     target_observations, source_observations = zip(
         *session.unpack_derived_observation_group(
@@ -173,3 +193,17 @@ def test_parc_aligned_study_dataops_roundtrip(
         target_derived_from=list(source_observations),
     )
     _assert_dataset_series_has_data(aggregated_dataset_series)
+    _assert_dataset_has_elements(
+        aggregated_dataset_series,
+        "adults_aggregated",
+        {"dona_lip_mean"},
+    )
+
+    dest = session.dump_tabular_dataset_series(
+        enriched_dataset_series,
+        output_path=str(tmp_path / "roundtrip"),
+        connection_label=CONNECTION_LABEL,
+        file_format="xlsx",
+    )
+    assert len(dest) == 1
+    assert dest[0].split("/")[-1] == enriched_dataset_series.label + ".xlsx"
