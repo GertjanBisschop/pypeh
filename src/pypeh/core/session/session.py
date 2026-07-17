@@ -36,6 +36,11 @@ from pypeh.core.models.validation_errors import (
     ValidationErrorReportCollection,
     build_schema_error_report,
 )
+from pypeh.core.models.dataset_series_mapping import (
+    DatasetSeriesAlignment,
+    DatasetSeriesConcatenationPlan,
+    ObservationAlignmentPlan,
+)
 from pypeh.core.models.internal_data_layout import DatasetSeries, Dataset
 from pypeh.core.interfaces.dataops import (
     AggregationInterface,
@@ -533,6 +538,42 @@ class Session(Generic[T_AdapterType, T_DataType]):
         )
 
         return exported
+
+    def concatenate_tabular_dataset_series(
+        self,
+        dataset_series: Sequence[DatasetSeries[DataFrame]],
+        *,
+        output_label: str | None = None,
+        alignment_plan: ObservationAlignmentPlan | None = None,
+        adapter_label: str = "dataops",
+    ) -> DatasetSeries[DataFrame]:
+        """
+        Concatenate already-tabular DatasetSeries.
+
+        Without an explicit alignment, every input series must contain the same
+        dataset labels and the same observable property ids within each paired
+        Dataset. With an alignment plan, source Observations and
+        ObservableProperties can be assembled into target Observations.
+        """
+        adapter = self.get_adapter(adapter_label)
+        assert isinstance(adapter, DataOpsInterface)
+        if alignment_plan is None:
+            plan = DatasetSeriesConcatenationPlan.from_strict_dataset_series(
+                dataset_series,
+                output_label=output_label,
+            )
+        else:
+            plan = DatasetSeriesConcatenationPlan.from_alignment(
+                dataset_series=dataset_series,
+                alignment=DatasetSeriesAlignment(
+                    alignment_plan=alignment_plan,
+                    output_label=output_label,
+                ),
+            )
+        return adapter.concatenate_dataset_series(
+            dataset_series=dataset_series,
+            plan=plan,
+        )
 
     def read_tabular_dataset_series(
         self,

@@ -64,6 +64,17 @@ class DataFrameAdapter(DataOpsInterface[pl.DataFrame]):
     ) -> pl.DataFrame:
         return data.rename(element_mapping)
 
+    def concatenate_data(
+        self, datasets: list[pl.DataFrame | pl.LazyFrame]
+    ) -> pl.DataFrame:
+        if len(datasets) == 0:
+            raise ValueError("Cannot concatenate an empty list of datasets.")
+        frames = [
+            dataset.collect() if isinstance(dataset, pl.LazyFrame) else dataset
+            for dataset in datasets
+        ]
+        return pl.concat(frames, how="vertical")
+
     def type_mapper(
         self, peh_value_type: str | ObservablePropertyValueType
     ) -> type[DataType]:

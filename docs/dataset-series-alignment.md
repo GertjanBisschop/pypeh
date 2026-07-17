@@ -1,0 +1,188 @@
+# Dataset Series Alignment
+
+`concatenate_tabular_dataset_series` can concatenate already-loaded
+`DatasetSeries` objects. Without an explicit alignment plan, pypeh uses strict
+matching: every source series must have the same dataset labels and the same
+observable property identifiers within each paired dataset.
+
+Use an `ObservationAlignmentPlan` when source series use different observation
+or observable property identifiers, or when one target observation should be
+assembled from more than one source observation.
+
+!!! note "Temporary model location"
+    The semantic alignment classes below are currently defined in pypeh, but
+    are intended to move to `peh_model`/LinkML:
+
+    - `ObservationAlignmentPlan`
+    - `ObservationAssembly`
+    - `SourceObservationGroup`
+    - `ObservablePropertyMapping`
+
+    Pypeh-specific classes such as `DatasetSeriesAlignment`,
+    `DatasetSeriesConcatenationPlan`, `DatasetRef`, and
+    `ContextualElementRef` should remain in pypeh because they refer to
+    concrete `DatasetSeries`, datasets, schema elements, and tabular fields.
+
+## Strict Concatenation
+
+If all source `DatasetSeries` already use matching dataset labels and matching
+observable property identifiers, no alignment plan is needed.
+
+```python
+combined = session.concatenate_tabular_dataset_series(
+    [series_a, series_b],
+    output_label="combined_lab",
+)
+```
+
+## Align Different Observations And Properties
+
+When source studies use different identifiers for semantically corresponding
+observations or observable properties, provide an `ObservationAlignmentPlan`.
+
+```python
+from pypeh.core.models.dataset_series_mapping import (
+    ObservablePropertyMapping,
+    ObservationAlignmentPlan,
+    ObservationAssembly,
+    SourceObservationGroup,
+)
+
+alignment_plan = ObservationAlignmentPlan(
+    observation_assemblies=(
+        ObservationAssembly(
+            target_observation_id="peh:obs_lab",
+            source_observation_groups=(
+                SourceObservationGroup(("study_a:obs_lab",)),
+                SourceObservationGroup(("study_b:obs_lab",)),
+            ),
+            observable_property_mappings=(
+                ObservablePropertyMapping(
+                    target_observable_property_id="peh:prop_id_sample",
+                    source_observable_property_ids=(
+                        "study_a:sample_id",
+                        "study_b:sample_id",
+                    ),
+                ),
+                ObservablePropertyMapping(
+                    target_observable_property_id="peh:prop_chol",
+                    source_observable_property_ids=(
+                        "study_a:chol",
+                        "study_b:total_cholesterol",
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
+combined = session.concatenate_tabular_dataset_series(
+    [series_a, series_b],
+    alignment_plan=alignment_plan,
+    output_label="aligned_lab",
+)
+```
+
+The order of each tuple is positional. In the example above,
+`study_a:obs_lab`, `study_a:sample_id`, and `study_a:chol` are resolved against
+`series_a`; the corresponding `study_b:*` identifiers are resolved against
+`series_b`.
+
+## Assemble One Target Observation From Several Source Observations
+
+A source series can contribute multiple observations to one target observation.
+This is useful when one source study splits fields across observation concepts
+that another source study represents as a single observation.
+
+```python
+alignment_plan = ObservationAlignmentPlan(
+    observation_assemblies=(
+        ObservationAssembly(
+            target_observation_id="peh:obs_lab",
+            source_observation_groups=(
+                SourceObservationGroup(
+                    ("study_a:obs_sample", "study_a:obs_lab")
+                ),
+                SourceObservationGroup(("study_b:obs_subject",)),
+            ),
+            observable_property_mappings=(
+                ObservablePropertyMapping(
+                    target_observable_property_id="peh:prop_id_sample",
+                    source_observable_property_ids=(
+                        "study_a:sample_id",
+                        "study_b:subject_id",
+                    ),
+                ),
+                ObservablePropertyMapping(
+                    target_observable_property_id="peh:prop_chol",
+                    source_observable_property_ids=(
+                        "study_a:chol",
+                        "study_b:total_cholesterol",
+                    ),
+                ),
+            ),
+        ),
+    ),
+)
+
+combined = session.concatenate_tabular_dataset_series(
+    [series_a, series_b],
+    alignment_plan=alignment_plan,
+    output_label="assembled_lab",
+)
+```
+
+For each mapped observable property, pypeh searches the source observations in
+that source group. The property must resolve to exactly one concrete source
+field. Multiple matches are accepted only when they point to the same concrete
+dataset element, which covers shared identifying fields registered for more
+than one observation.
+
+## Infer Shared Observable Properties
+
+If an `ObservationAssembly` does not provide `observable_property_mappings`,
+pypeh infers identity mappings for observable property identifiers shared by
+all source observation groups.
+
+```python
+alignment_plan = ObservationAlignmentPlan(
+    observation_assemblies=(
+        ObservationAssembly(
+            target_observation_id="peh:obs_lab",
+            source_observation_groups=(
+                SourceObservationGroup(
+                    ("peh:obs_sample", "peh:obs_lab")
+                ),
+                SourceObservationGroup(("peh:obs_lab",)),
+            ),
+        ),
+    ),
+)
+
+combined = session.concatenate_tabular_dataset_series(
+    [series_a, series_b],
+    alignment_plan=alignment_plan,
+    output_label="inferred_lab",
+)
+```
+
+Inference is identity-based. It only maps observable properties with the same
+identifier in every source group. If source studies use different identifiers
+for corresponding properties, provide explicit `ObservablePropertyMapping`
+objects.
+
+## Current Restrictions
+
+Direct concatenation currently assumes:
+
+- each `SourceObservationGroup` position corresponds to the `DatasetSeries` at
+  the same position in the list passed to `concatenate_tabular_dataset_series`;
+- each explicit `ObservablePropertyMapping.source_observable_property_ids`
+  tuple has one entry per source `DatasetSeries`;
+- each scoped property resolves to one source field per series;
+- aligned fields have compatible value types;
+- one output dataset is not assembled from multiple source datasets within the
+  same source series.
+
+Transformations, derivations, unit conversion, and cross-dataset assembly within
+one source series are not represented by this direct alignment model yet.

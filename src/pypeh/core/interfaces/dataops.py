@@ -21,6 +21,9 @@ from pypeh.core.cache.containers import (
     CacheContainerView,
 )
 from pypeh.core.models.constants import ObservablePropertyValueType
+from pypeh.core.models.dataset_series_mapping import (
+    DatasetSeriesConcatenationPlan,
+)
 from pypeh.core.models.internal_data_layout import (
     Dataset,
     DatasetSchemaElement,
@@ -219,6 +222,12 @@ class DataOpsInterface(Generic[T_DataType]):
 
     @abstractmethod
     def collect(self, datasets: dict):
+        raise NotImplementedError(
+            "Abstract method on class DataOpsInterface was called without supporting implementation."
+        )
+
+    @abstractmethod
+    def concatenate_data(self, datasets: list[T_DataType]) -> T_DataType:
         raise NotImplementedError(
             "Abstract method on class DataOpsInterface was called without supporting implementation."
         )
@@ -1090,6 +1099,113 @@ class DataOpsInterface(Generic[T_DataType]):
             target.parts[target_dataset_label].data = final_data
 
         return target
+
+    def concatenate_dataset_series(
+        self,
+        dataset_series: Sequence[DatasetSeries[T_DataType]],
+        *,
+        plan: DatasetSeriesConcatenationPlan[T_DataType] | None = None,
+        output_label: str | None = None,
+    ) -> DatasetSeries[T_DataType]:
+        if plan is None:
+            plan = DatasetSeriesConcatenationPlan.from_strict_dataset_series(
+                dataset_series,
+                output_label=output_label,
+            )
+        ret = DatasetSeries[T_DataType](
+            label=plan.output_label,
+            metadata={
+                "source_dataset_series": [
+                    {"label": ref.series_label, "index": ref.series_index}
+                    for ref in plan.sources
+                ],
+                "concatenation_mode": "strict_observable_property_id",
+            },
+        )
+
+        for dataset_mapping in plan.datasets:
+            canonical_ref = dataset_mapping.sources[0]
+            canonical_dataset = dataset_series[
+                canonical_ref.series_index
+            ].parts[canonical_ref.dataset_label]
+            output_dataset = Dataset[T_DataType](
+                label=dataset_mapping.output_dataset_label,
+                schema=dataset_mapping.build_output_schema(canonical_dataset),
+                metadata={
+                    "source_datasets": [
+                        {
+                            "series_label": ref.series_label,
+                            "series_index": ref.series_index,
+                            "dataset_label": ref.dataset_label,
+                        }
+                        for ref in dataset_mapping.sources
+                    ]
+                },
+            )
+            output_observation_ids = set(
+                dataset_mapping.output_observation_ids
+            )
+            data_parts: list[T_DataType] = []
+            ordered_output_labels = [
+                element.output_element_label
+                for element in dataset_mapping.elements
+            ]
+
+            for dataset_ref in dataset_mapping.sources:
+                source_dataset = dataset_series[
+                    dataset_ref.series_index
+                ].parts[dataset_ref.dataset_label]
+                if source_dataset.data is None:
+                    raise ValueError(
+                        f"Dataset {dataset_ref.dataset_label!r} in series "
+                        f"{dataset_ref.series_label!r} has no data; cannot "
+                        "concatenate."
+                    )
+                source_to_output = {
+                    source.element_label: element.output_element_label
+                    for element in dataset_mapping.elements
+                    for source in element.sources
+                    if source.dataset == dataset_ref
+                    and source.element_label != element.output_element_label
+                }
+                source_labels = [
+                    source.element_label
+                    for element in dataset_mapping.elements
+                    for source in element.sources
+                    if source.dataset == dataset_ref
+                ]
+                source_labels = list(dict.fromkeys(source_labels))
+                data = self.subset(
+                    source_dataset.data, element_group=source_labels
+                )
+                if len(source_to_output) > 0:
+                    data = self.relabel(data, source_to_output)
+                data_parts.append(
+                    self.subset(data, element_group=ordered_output_labels)
+                )
+                if len(dataset_mapping.output_observation_ids) == 0:
+                    output_observation_ids.update(
+                        source_dataset.observation_ids
+                    )
+
+            output_dataset.data = self.concatenate_data(data_parts)
+            output_dataset.observation_ids.update(output_observation_ids)
+            ret.register_dataset(output_dataset)
+
+            for element in dataset_mapping.elements:
+                for observation_id in output_observation_ids:
+                    ret._register_observable_property(
+                        observable_property_id=(
+                            element.output_observable_property_id
+                        ),
+                        observation_id=observation_id,
+                        dataset_label=dataset_mapping.output_dataset_label,
+                        element_label=element.output_element_label,
+                        allow_existing=True,
+                    )
+
+        ret.build_observation_index()
+        return ret
 
     def split_by_observation(
         self,
