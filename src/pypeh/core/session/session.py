@@ -41,6 +41,7 @@ from pypeh.core.interfaces.dataops import (
     AggregationInterface,
     DataOpsInterface,
     DataEnrichmentInterface,
+    DataExtractInterface,
     LabelCollisionStrategy,
     ValidationInterface,
 )
@@ -216,6 +217,9 @@ class Session(Generic[T_AdapterType, T_DataType]):
                 self._adapter_mapping[interface_functionality] = adapter
             case "enrichment":
                 adapter = DataEnrichmentInterface.get_default_adapter_class()
+                self._adapter_mapping[interface_functionality] = adapter
+            case "extract":
+                adapter = DataExtractInterface.get_default_adapter_class()
                 self._adapter_mapping[interface_functionality] = adapter
             case "aggregation":
                 adapter = AggregationInterface.get_default_adapter_class()
