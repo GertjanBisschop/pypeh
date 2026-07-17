@@ -1738,6 +1738,34 @@ class TestDatasetSeriesMods(abc.ABC):
         source._register_observable_property(
             "src:second", "obs:source", "source_two", "second_value"
         )
+        first_calculation_design = CalculationDesign(
+            calculation_implementation=CalculationImplementation(
+                function_name="fn",
+                function_kwargs=[
+                    CalculationKeywordArgument(
+                        mapping_name="measurement",
+                        contextual_field_reference=ContextualFieldReference(
+                            dataset_label="obs:source",
+                            field_label="src:first",
+                        ),
+                    )
+                ],
+            )
+        )
+        second_calculation_design = CalculationDesign(
+            calculation_implementation=CalculationImplementation(
+                function_name="fn",
+                function_kwargs=[
+                    CalculationKeywordArgument(
+                        mapping_name="measurement",
+                        contextual_field_reference=ContextualFieldReference(
+                            dataset_label="obs:source",
+                            field_label="src:second",
+                        ),
+                    )
+                ],
+            )
+        )
 
         container = CacheContainerFactory.new()
         container.add(
@@ -1755,12 +1783,14 @@ class TestDatasetSeriesMods(abc.ABC):
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=first_calculation_design,
                     ),
                     ObservablePropertySpecification(
                         observable_property="prop:second",
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=second_calculation_design,
                     ),
                 ],
             )
@@ -1770,22 +1800,6 @@ class TestDatasetSeriesMods(abc.ABC):
                 id="prop:first",
                 short_name="duplicate_label",
                 value_type="string",
-                calculation_design=CalculationDesign(
-                    calculation_implementation=CalculationImplementation(
-                        function_name="fn",
-                        function_kwargs=[
-                            CalculationKeywordArgument(
-                                mapping_name="measurement",
-                                contextual_field_reference=(
-                                    ContextualFieldReference(
-                                        dataset_label="obs:source",
-                                        field_label="src:first",
-                                    )
-                                ),
-                            )
-                        ],
-                    )
-                ),
             )
         )
         container.add(
@@ -1793,22 +1807,6 @@ class TestDatasetSeriesMods(abc.ABC):
                 id="prop:second",
                 short_name="duplicate_label",
                 value_type="string",
-                calculation_design=CalculationDesign(
-                    calculation_implementation=CalculationImplementation(
-                        function_name="fn",
-                        function_kwargs=[
-                            CalculationKeywordArgument(
-                                mapping_name="measurement",
-                                contextual_field_reference=(
-                                    ContextualFieldReference(
-                                        dataset_label="obs:source",
-                                        field_label="src:second",
-                                    )
-                                ),
-                            )
-                        ],
-                    )
-                ),
             )
         )
         cache_view = CacheContainerView(container)
@@ -1861,6 +1859,34 @@ class TestDatasetSeriesMods(abc.ABC):
         source._register_observable_property(
             "src:second", "obs:source", "source_observation", "second_value"
         )
+        first_calculation_design = CalculationDesign(
+            calculation_implementation=CalculationImplementation(
+                function_name="fn",
+                function_kwargs=[
+                    CalculationKeywordArgument(
+                        mapping_name="measurement",
+                        contextual_field_reference=ContextualFieldReference(
+                            dataset_label="obs:source",
+                            field_label="src:first",
+                        ),
+                    )
+                ],
+            )
+        )
+        second_calculation_design = CalculationDesign(
+            calculation_implementation=CalculationImplementation(
+                function_name="fn",
+                function_kwargs=[
+                    CalculationKeywordArgument(
+                        mapping_name="measurement",
+                        contextual_field_reference=ContextualFieldReference(
+                            dataset_label="obs:source",
+                            field_label="src:second",
+                        ),
+                    )
+                ],
+            )
+        )
 
         container = CacheContainerFactory.new()
         container.add(
@@ -1878,12 +1904,14 @@ class TestDatasetSeriesMods(abc.ABC):
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=first_calculation_design,
                     ),
                     ObservablePropertySpecification(
                         observable_property="prop:second",
                         specification_category=(
                             ObservablePropertySpecificationCategory.derived
                         ),
+                        calculation_design=second_calculation_design,
                     ),
                 ],
             )
@@ -1893,22 +1921,6 @@ class TestDatasetSeriesMods(abc.ABC):
                 id="prop:first",
                 short_name="duplicate_label",
                 value_type="string",
-                calculation_design=CalculationDesign(
-                    calculation_implementation=CalculationImplementation(
-                        function_name="fn",
-                        function_kwargs=[
-                            CalculationKeywordArgument(
-                                mapping_name="measurement",
-                                contextual_field_reference=(
-                                    ContextualFieldReference(
-                                        dataset_label="obs:source",
-                                        field_label="src:first",
-                                    )
-                                ),
-                            )
-                        ],
-                    )
-                ),
             )
         )
         container.add(
@@ -1916,22 +1928,6 @@ class TestDatasetSeriesMods(abc.ABC):
                 id="prop:second",
                 short_name="duplicate_label",
                 value_type="string",
-                calculation_design=CalculationDesign(
-                    calculation_implementation=CalculationImplementation(
-                        function_name="fn",
-                        function_kwargs=[
-                            CalculationKeywordArgument(
-                                mapping_name="measurement",
-                                contextual_field_reference=(
-                                    ContextualFieldReference(
-                                        dataset_label="obs:source",
-                                        field_label="src:second",
-                                    )
-                                ),
-                            )
-                        ],
-                    )
-                ),
             )
         )
         cache_view = CacheContainerView(container)
