@@ -218,6 +218,42 @@ def build_type_cast_error_report(
     )
 
 
+def build_type_cast_error_report_from_errors(
+    exceptions: list[TypeCastError],
+    *,
+    group_id: str,
+    group_type: str,
+    name: str,
+    metadata: Dict[str, Any],
+    source: str,
+) -> ValidationErrorReport:
+    counter = {level: 0 for level in ValidationErrorLevel}
+    counter[ValidationErrorLevel.FATAL] = len(exceptions)
+    return ValidationErrorReport(
+        timestamp=datetime.now().isoformat(),
+        total_errors=len(exceptions),
+        error_counts=counter,
+        groups=[
+            ValidationErrorGroup(
+                group_id=group_id,
+                group_type=group_type,
+                name=name,
+                metadata=metadata,
+                errors=[
+                    ValidationError(
+                        message=str(exception),
+                        type=type(exception).__name__,
+                        level=ValidationErrorLevel.FATAL,
+                        source=source,
+                    )
+                    for exception in exceptions
+                ],
+            )
+        ],
+        unexpected_errors=[],
+    )
+
+
 class ValidationErrorReportCollection(dict[str, ValidationErrorReport]):
     """Collection of validation reports mapped by observation"""
 

@@ -548,6 +548,37 @@ class TestXlsIO:
                 cast_error_policy="raise",
             )
 
+    def test_typed_sheet_type_mismatch_raise_stays_greedy(self, tmp_path):
+        source = tmp_path / "typed_mismatch.xlsx"
+        write_minimal_xlsx(
+            source,
+            sheet_name="SAMPLE",
+            headers=["id_sample", "chol", "samplingday"],
+            rows=[
+                ["sample_a", 1.2, 1],
+                ["sample_b", "oops", "bad-day"],
+                ["sample_c", 3.4, 3],
+            ],
+        )
+
+        excel_io = ExcelIO()
+        with pytest.raises(TypeCastError) as exc_info:
+            excel_io.load_section(
+                source,
+                section_name="SAMPLE",
+                data_schema={
+                    "id_sample": "string",
+                    "chol": "float",
+                    "samplingday": "integer",
+                },
+                cast_error_policy="raise",
+            )
+
+        message = str(exc_info.value)
+        assert "Failed to cast Excel sheet 'SAMPLE'" in message
+        assert "oops" in message
+        assert "bad-day" not in message
+
     def test_typed_sheet_type_mismatch_returns_report_when_requested(
         self, tmp_path
     ):
@@ -580,6 +611,45 @@ class TestXlsIO:
         assert error.level == ValidationErrorLevel.FATAL
         assert error.type == "TypeCastError"
         assert "Failed to cast Excel sheet 'SAMPLE'" in error.message
+
+    def test_typed_sheet_type_mismatch_report_collects_all_columns(
+        self, tmp_path
+    ):
+        source = tmp_path / "typed_mismatch.xlsx"
+        write_minimal_xlsx(
+            source,
+            sheet_name="SAMPLE",
+            headers=["id_sample", "chol", "samplingday"],
+            rows=[
+                ["sample_a", 1.2, 1],
+                ["sample_b", "oops", "bad-day"],
+                ["sample_c", 3.4, 3],
+            ],
+        )
+
+        excel_io = ExcelIO()
+        result = excel_io.load_section(
+            source,
+            section_name="SAMPLE",
+            data_schema={
+                "id_sample": "string",
+                "chol": "float",
+                "samplingday": "integer",
+            },
+            cast_error_policy="report",
+        )
+
+        assert isinstance(result, ValidationErrorReport)
+        assert result.total_errors == 2
+        assert result.error_counts[ValidationErrorLevel.FATAL] == 2
+        errors = result.groups[0].errors
+        assert [error.type for error in errors] == [
+            "TypeCastError",
+            "TypeCastError",
+        ]
+        messages = [error.message for error in errors]
+        assert any("column 'chol'" in message for message in messages)
+        assert any("column 'samplingday'" in message for message in messages)
 
 
 @pytest.mark.core

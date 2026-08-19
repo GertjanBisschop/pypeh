@@ -12,6 +12,7 @@ from pypeh.core.models.constants import ObservablePropertyValueType
 from pypeh.core.models.validation_errors import (
     TypeCastError,
     ValidationErrorReport,
+    build_type_cast_error_report_from_errors,
     build_type_cast_error_report,
 )
 from pypeh.adapters.persistence.temporal import (
@@ -205,6 +206,60 @@ class ExcelIOImpl(IOAdapter):
 
         return cast_data
 
+    def _collect_cast_errors(
+        self,
+        data: pl.DataFrame,
+        typed_schema: Mapping[str, DataType | DataTypeClass] | None,
+        *,
+        section_name: str,
+    ) -> list[TypeCastError]:
+        if typed_schema is None:
+            return []
+
+        errors = []
+        for column_name, polars_type in typed_schema.items():
+            if column_name not in data.columns:
+                continue
+
+            source_type = data.schema[column_name].base_type()
+            temporal_cast = build_temporal_cast(
+                column_name,
+                source_type,
+                polars_type,
+                strict=True,
+            )
+            expression = (
+                temporal_cast.expression
+                if temporal_cast is not None
+                else pl.col(column_name).cast(polars_type, strict=True)
+            )
+            try:
+                cast_data = data.with_columns(expression)
+            except pl.exceptions.PolarsError as exc:
+                errors.append(
+                    TypeCastError(
+                        "Failed to cast Excel sheet "
+                        f"{section_name!r} column {column_name!r} "
+                        f"using cast_error_policy='raise': {exc}"
+                    )
+                )
+                continue
+
+            if (
+                temporal_cast is not None
+                and temporal_cast.strict_check is not None
+            ):
+                try:
+                    temporal_cast.strict_check.validate(
+                        data,
+                        cast_data,
+                        section_name=section_name,
+                    )
+                except TypeCastError as exc:
+                    errors.append(exc)
+
+        return errors
+
     def _load(
         self, source: Union[str, Path, IO[str], IO[bytes], bytes], **options
     ) -> pl.DataFrame | dict[str, pl.DataFrame]:
@@ -274,6 +329,22 @@ class ExcelIOImpl(IOAdapter):
 
         ret = self._load(source, **options)
         assert isinstance(ret, pl.DataFrame)
+        if cast_error_policy == "report":
+            errors = self._collect_cast_errors(
+                ret,
+                typed_schema,
+                section_name=section_name,
+            )
+            if errors:
+                return build_type_cast_error_report_from_errors(
+                    errors,
+                    group_id=section_name,
+                    group_type="excel_cast_error",
+                    name=f"Excel cast error in sheet {section_name!r}",
+                    metadata={"section_name": section_name},
+                    source="ExcelIOImpl.load_section",
+                )
+
         try:
             return self._cast_frame_to_schema(
                 ret,
