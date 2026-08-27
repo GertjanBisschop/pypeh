@@ -39,7 +39,7 @@ from pypeh.core.models.validation_errors import (
 from pypeh.core.models.dataset_series_mapping import (
     DatasetSeriesAlignment,
     DatasetSeriesConcatenationPlan,
-    ObservationAlignmentPlan,
+    ObservationAlignment,
 )
 from pypeh.core.models.internal_data_layout import DatasetSeries, Dataset
 from pypeh.core.interfaces.dataops import (
@@ -544,7 +544,8 @@ class Session(Generic[T_AdapterType, T_DataType]):
         dataset_series: Sequence[DatasetSeries[DataFrame]],
         *,
         output_label: str | None = None,
-        alignment_plan: ObservationAlignmentPlan | None = None,
+        alignment_plan: ObservationAlignment | None = None,
+        observation_groups: Sequence[peh.ObservationGroup] = (),
         adapter_label: str = "dataops",
     ) -> DatasetSeries[DataFrame]:
         """
@@ -567,6 +568,7 @@ class Session(Generic[T_AdapterType, T_DataType]):
                 dataset_series=dataset_series,
                 alignment=DatasetSeriesAlignment(
                     alignment_plan=alignment_plan,
+                    observation_groups=tuple(observation_groups),
                     output_label=output_label,
                 ),
             )

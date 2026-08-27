@@ -165,6 +165,15 @@ class ExcelIOImpl(IOAdapter):
             return data
 
         strict = cast_error_policy == "raise"
+        if strict:
+            errors = self._collect_cast_errors(
+                data,
+                typed_schema,
+                section_name=section_name,
+            )
+            if errors:
+                raise errors[0]
+
         cast_expressions = []
         strict_temporal_checks: list[TemporalCastCheck] = []
         for column_name, polars_type in typed_schema.items():
