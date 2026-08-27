@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Generic, Sequence
+from dataclasses import dataclass
+from typing import Generic, Sequence
+
+import peh_model.peh as peh
 
 from pypeh.core.models.constants import ObservablePropertyValueType
 from pypeh.core.models.internal_data_layout import (
@@ -13,108 +15,72 @@ from pypeh.core.models.internal_data_layout import (
 from pypeh.core.models.typing import T_DataType
 
 
-@dataclass(frozen=True)
-class ObservablePropertyMapping:
-    """
-    Align one target ObservableProperty with one source property per input series.
-
-    TODO: MIGRATE TO `peh_model`/LinkML.
-
-    The order of `source_observable_property_ids` is positional by source
-    collection. Direct concatenation expects exactly one source property for
-    each source collection.
-    """
-
-    target_observable_property_id: str
-    source_observable_property_ids: tuple[str, ...]
-    metadata: dict[str, Any] = field(default_factory=dict)
+ObservablePropertyMapping = peh.ObservablePropertyMapping
+ObservationAssembly = peh.ObservationAssembly
+ObservationAlignment = peh.ObservationAlignment
 
 
-@dataclass(frozen=True)
-class SourceObservationGroup:
-    """
-    Source Observations that contribute to a target Observation.
-
-    TODO: MIGRATE TO `peh_model`/LinkML. Note that `peh_model`
-    already has an ObservationGroup model.
-
-    `source_observation_ids` may contain one or more source Observations. When
-    resolving a scoped property mapping, the planner searches these Observations
-    for the mapped source observable property. Multiple matches are accepted
-    only when they resolve to the same concrete source field, which covers
-    shared identifying fields registered for several Observations.
-    """
-
-    source_observation_ids: tuple[str, ...]
+def _as_tuple(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)
 
 
-@dataclass(frozen=True)
-class ObservationAssembly:
-    """
-    Authoring model for one output Observation.
-
-    TODO: MIGRATE TO `peh_model`/LinkML.
-
-    `source_observation_groups` is positional by source collection. Each entry
-    lists the source Observations that may contribute fields for this target
-    Observation. `observable_property_mappings` is scoped to this target
-    Observation, avoiding the old global cross-product between observations and
-    properties. If no property alignments are provided, the planner infers an
-    identity mapping for the shared observable properties resolvable in every
-    source contribution.
-    """
-
-    target_observation_id: str
-    source_observation_groups: tuple[SourceObservationGroup, ...]
-    observable_property_mappings: tuple[ObservablePropertyMapping, ...] = ()
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ObservationAlignmentPlan:
-    """
-    Semantic alignment plan over Observations and ObservableProperties.
-
-    TODO: MIGRATE TO `peh_model`/LinkML.
-
-    This is the part of the model that can move toward `peh_model`: it does not
-    name Datasets or DatasetSeries. Pypeh interprets source groups positionally
-    against the concrete DatasetSeries supplied to concatenation.
-    """
-
-    observation_assemblies: tuple[ObservationAssembly, ...]
+def _source_observation_ids(
+    source_observation_group_id: str,
+    observation_groups_by_id: dict[str, peh.ObservationGroup],
+) -> tuple[str, ...]:
+    source_observation_group = observation_groups_by_id.get(
+        source_observation_group_id
+    )
+    if source_observation_group is None:
+        return (source_observation_group_id,)
+    return _as_tuple(source_observation_group.observation_id_list)
 
 
 @dataclass(frozen=True)
 class DatasetSeriesAlignment:
     """
-    Pypeh wrapper for applying an ObservationAlignmentPlan to DatasetSeries.
+    Pypeh wrapper for applying an ObservationAlignment to DatasetSeries.
 
-    Session-level APIs accept `ObservationAlignmentPlan` directly and construct
+    Session-level APIs accept `ObservationAlignment` directly and construct
     this wrapper internally to attach DatasetSeries-specific options such as the
     output label.
 
     Example for two source series:
 
         DatasetSeriesAlignment(
-            alignment_plan=ObservationAlignmentPlan(
-                observation_assemblies=(
-                    ObservationAssembly(
+            alignment_plan=peh.ObservationAlignment(
+                id="peh:alignment_lab",
+                observation_assemblies=[
+                    peh.ObservationAssembly(
                         target_observation_id="peh:obs_lab",
-                        source_observation_groups=(
-                            SourceObservationGroup(("study_a:sample",)),
-                            SourceObservationGroup(("study_b:subject",)),
-                        ),
-                        observable_property_mappings=(
-                            ObservablePropertyMapping(
+                        source_observation_groups=[
+                            "peh:og_study_a_sample",
+                            "peh:og_study_b_subject",
+                        ],
+                        observable_property_mappings=[
+                            peh.ObservablePropertyMapping(
                                 target_observable_property_id="peh:chol",
-                                source_observable_property_ids=(
+                                source_observable_property_ids=[
                                     "study_a:chol",
                                     "study_b:total_cholesterol",
-                                ),
+                                ],
                             ),
-                        ),
+                        ],
                     ),
+                ],
+            ),
+            observation_groups=(
+                peh.ObservationGroup(
+                    id="peh:og_study_a_sample",
+                    observation_id_list=["study_a:sample"],
+                ),
+                peh.ObservationGroup(
+                    id="peh:og_study_b_subject",
+                    observation_id_list=["study_b:subject"],
                 ),
             ),
         )
@@ -127,7 +93,8 @@ class DatasetSeriesAlignment:
       within the same source series.
     """
 
-    alignment_plan: ObservationAlignmentPlan
+    alignment_plan: ObservationAlignment
+    observation_groups: tuple[peh.ObservationGroup, ...] = ()
     output_label: str | None = None
 
     def with_output_label(
@@ -137,6 +104,7 @@ class DatasetSeriesAlignment:
             return self
         return DatasetSeriesAlignment(
             alignment_plan=self.alignment_plan,
+            observation_groups=self.observation_groups,
             output_label=output_label,
         )
 
@@ -287,12 +255,15 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
         *,
         source_count: int,
     ) -> None:
-        if len(alignment.source_observable_property_ids) != source_count:
+        source_observable_property_ids = _as_tuple(
+            alignment.source_observable_property_ids
+        )
+        if len(source_observable_property_ids) != source_count:
             raise ValueError(
                 "ObservablePropertyMapping "
                 f"{alignment.target_observable_property_id!r} must contain "
                 f"{source_count} source observable property ids; found "
-                f"{len(alignment.source_observable_property_ids)}."
+                f"{len(source_observable_property_ids)}."
             )
 
     @classmethod
@@ -301,13 +272,21 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
         alignment: DatasetSeriesAlignment,
         source_count: int,
     ) -> tuple[ObservationAssembly, ...]:
-        return alignment.alignment_plan.observation_assemblies
+        observation_assemblies = (
+            alignment.alignment_plan.observation_assemblies
+        )
+        if observation_assemblies is None:
+            return ()
+        if isinstance(observation_assemblies, peh.ObservationAssembly):
+            return (observation_assemblies,)
+        return tuple(observation_assemblies)
 
     @classmethod
     def _validate_target_alignments(
         cls,
         target_alignments: Sequence[ObservationAssembly],
         source_count: int,
+        observation_groups_by_id: dict[str, peh.ObservationGroup],
     ) -> None:
         if len(target_alignments) == 0:
             raise ValueError(
@@ -315,17 +294,28 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
                 "observation alignment."
             )
         for target_alignment in target_alignments:
-            if len(target_alignment.source_observation_groups) != source_count:
+            source_observation_groups = _as_tuple(
+                target_alignment.source_observation_groups
+            )
+            if len(source_observation_groups) != source_count:
                 raise ValueError(
                     "ObservationAssembly "
                     f"{target_alignment.target_observation_id!r} must "
                     f"contain {source_count} source contributions; found "
-                    f"{len(target_alignment.source_observation_groups)}."
+                    f"{len(source_observation_groups)}."
                 )
             for series_index, contribution in enumerate(
-                target_alignment.source_observation_groups
+                source_observation_groups
             ):
-                if len(contribution.source_observation_ids) == 0:
+                if (
+                    len(
+                        _source_observation_ids(
+                            str(contribution),
+                            observation_groups_by_id,
+                        )
+                    )
+                    == 0
+                ):
                     raise ValueError(
                         "ObservationAssembly "
                         f"{target_alignment.target_observation_id!r} contains "
@@ -422,15 +412,20 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
         cls,
         dataset_series: Sequence[DatasetSeries[T_DataType]],
         target_alignment: ObservationAssembly,
+        observation_groups_by_id: dict[str, peh.ObservationGroup],
     ) -> tuple[ObservablePropertyMapping, ...]:
         shared_property_ids: set[str] | None = None
+        source_observation_group_ids = _as_tuple(
+            target_alignment.source_observation_groups
+        )
         for series_index, series in enumerate(dataset_series):
-            contribution = target_alignment.source_observation_groups[
-                series_index
-            ]
+            contribution = source_observation_group_ids[series_index]
             property_ids = cls._resolvable_property_ids(
                 series,
-                contribution.source_observation_ids,
+                _source_observation_ids(
+                    str(contribution),
+                    observation_groups_by_id,
+                ),
             )
             if shared_property_ids is None:
                 shared_property_ids = property_ids
@@ -446,16 +441,17 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
 
         canonical_property_ids = cls._ordered_resolvable_property_ids(
             dataset_series[0],
-            target_alignment.source_observation_groups[
-                0
-            ].source_observation_ids,
+            _source_observation_ids(
+                source_observation_group_ids[0],
+                observation_groups_by_id,
+            ),
         )
         return tuple(
             ObservablePropertyMapping(
                 target_observable_property_id=observable_property_id,
-                source_observable_property_ids=tuple(
+                source_observable_property_ids=[
                     observable_property_id for _ in dataset_series
-                ),
+                ],
             )
             for observable_property_id in canonical_property_ids
             if observable_property_id in shared_property_ids
@@ -478,7 +474,15 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
             alignment,
             source_count,
         )
-        cls._validate_target_alignments(target_alignments, source_count)
+        observation_groups_by_id = {
+            str(observation_group.id): observation_group
+            for observation_group in alignment.observation_groups
+        }
+        cls._validate_target_alignments(
+            target_alignments,
+            source_count,
+            observation_groups_by_id,
+        )
 
         first = dataset_series[0]
         output_label = (
@@ -501,17 +505,21 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
         observation_ids_by_output: dict[str, set[str]] = {}
 
         for target_alignment in target_alignments:
-            property_alignments = (
-                target_alignment.observable_property_mappings
-                or cls._infer_property_alignments(
-                    dataset_series,
-                    target_alignment,
-                )
+            source_observation_group_ids = _as_tuple(
+                target_alignment.source_observation_groups
+            )
+            property_alignments = tuple(
+                target_alignment.observable_property_mappings or ()
+            ) or cls._infer_property_alignments(
+                dataset_series,
+                target_alignment,
+                observation_groups_by_id,
             )
             for property_alignment in property_alignments:
-                canonical_property_id = (
-                    property_alignment.source_observable_property_ids[0]
+                source_property_ids = _as_tuple(
+                    property_alignment.source_observable_property_ids
                 )
+                canonical_property_id = source_property_ids[0]
                 (
                     _,
                     canonical_dataset_label,
@@ -522,9 +530,10 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
                         target_alignment.target_observation_id
                     ),
                     source_observation_ids=(
-                        target_alignment.source_observation_groups[
-                            0
-                        ].source_observation_ids
+                        _source_observation_ids(
+                            source_observation_group_ids[0],
+                            observation_groups_by_id,
+                        )
                     ),
                     source_property_id=canonical_property_id,
                 )
@@ -543,11 +552,7 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
 
                 source_refs: list[ContextualElementRef] = []
                 for series_index, series in enumerate(dataset_series):
-                    source_property_id = (
-                        property_alignment.source_observable_property_ids[
-                            series_index
-                        ]
-                    )
+                    source_property_id = source_property_ids[series_index]
                     (
                         source_observation_id,
                         source_dataset_label,
@@ -558,9 +563,10 @@ class DatasetSeriesConcatenationPlan(Generic[T_DataType]):
                             target_alignment.target_observation_id
                         ),
                         source_observation_ids=(
-                            target_alignment.source_observation_groups[
-                                series_index
-                            ].source_observation_ids
+                            _source_observation_ids(
+                                source_observation_group_ids[series_index],
+                                observation_groups_by_id,
+                            )
                         ),
                         source_property_id=source_property_id,
                     )

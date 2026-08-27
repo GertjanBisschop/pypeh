@@ -6,13 +6,20 @@ import peh_model.peh as peh
 from pypeh import LocalFileConfig, Session
 from pypeh.adapters.persistence.serializations import ExcelIO
 from pypeh.core.models.constants import ObservablePropertyValueType
-from pypeh.core.models.dataset_series_mapping import (
-    ObservablePropertyMapping,
-    ObservationAlignmentPlan,
-    ObservationAssembly,
-    SourceObservationGroup,
-)
 from pypeh.core.models.internal_data_layout import Dataset, DatasetSeries
+
+
+def _observation_group(
+    observation_ids: tuple[str, ...],
+) -> peh.ObservationGroup:
+    return peh.ObservationGroup(
+        id="peh:og_"
+        + "_".join(
+            observation_id.replace(":", "_")
+            for observation_id in observation_ids
+        ),
+        observation_id_list=list(observation_ids),
+    )
 
 
 @pytest.fixture
@@ -431,39 +438,45 @@ class TestSessionExport:
             cholesterol_property_id="study_b:total_cholesterol",
         )
 
-        alignment_plan = ObservationAlignmentPlan(
-            observation_assemblies=(
-                ObservationAssembly(
+        observation_groups = (
+            _observation_group(("peh:obs_lab",)),
+            _observation_group(("study_b:obs_lab",)),
+        )
+        alignment_plan = peh.ObservationAlignment(
+            id="peh:alignment_lab_export",
+            observation_assemblies=[
+                peh.ObservationAssembly(
                     target_observation_id="peh:obs_lab",
-                    source_observation_groups=(
-                        SourceObservationGroup(("peh:obs_lab",)),
-                        SourceObservationGroup(("study_b:obs_lab",)),
-                    ),
-                    observable_property_mappings=(
-                        ObservablePropertyMapping(
+                    source_observation_groups=[
+                        observation_group.id
+                        for observation_group in observation_groups
+                    ],
+                    observable_property_mappings=[
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id=(
                                 "peh:prop_id_sample"
                             ),
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "peh:prop_id_sample",
                                 "study_b:sample_id",
-                            ),
+                            ],
                         ),
-                        ObservablePropertyMapping(
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id="peh:prop_chol",
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "peh:prop_chol",
                                 "study_b:total_cholesterol",
-                            ),
+                            ],
                         ),
-                    ),
+                    ],
                 ),
-            ),
+            ],
         )
 
         concatenated = export_session.concatenate_tabular_dataset_series(
             [first_export, second_export],
             alignment_plan=alignment_plan,
+            observation_groups=observation_groups,
             output_label="aligned_lab_export",
         )
 
@@ -515,64 +528,75 @@ class TestSessionExport:
             cholesterol_property_id="study_b:total_cholesterol",
         )
 
-        alignment_plan = ObservationAlignmentPlan(
-            observation_assemblies=(
-                ObservationAssembly(
+        baseline_groups = (
+            _observation_group(("study_a:baseline_lab",)),
+            _observation_group(("study_b:t0_lab",)),
+        )
+        followup_groups = (
+            _observation_group(("study_a:followup_lab",)),
+            _observation_group(("study_b:t1_lab",)),
+        )
+        observation_groups = (*baseline_groups, *followup_groups)
+        alignment_plan = peh.ObservationAlignment(
+            id="peh:alignment_longitudinal_lab",
+            observation_assemblies=[
+                peh.ObservationAssembly(
                     target_observation_id="peh:obs_lab_baseline",
-                    source_observation_groups=(
-                        SourceObservationGroup(("study_a:baseline_lab",)),
-                        SourceObservationGroup(("study_b:t0_lab",)),
-                    ),
-                    observable_property_mappings=(
-                        ObservablePropertyMapping(
+                    source_observation_groups=[
+                        observation_group.id
+                        for observation_group in baseline_groups
+                    ],
+                    observable_property_mappings=[
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id=(
                                 "peh:prop_id_sample"
                             ),
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "study_a:sample_id",
                                 "study_b:sample_id",
-                            ),
+                            ],
                         ),
-                        ObservablePropertyMapping(
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id="peh:prop_chol",
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "study_a:chol",
                                 "study_b:total_cholesterol",
-                            ),
+                            ],
                         ),
-                    ),
+                    ],
                 ),
-                ObservationAssembly(
+                peh.ObservationAssembly(
                     target_observation_id="peh:obs_lab_followup",
-                    source_observation_groups=(
-                        SourceObservationGroup(("study_a:followup_lab",)),
-                        SourceObservationGroup(("study_b:t1_lab",)),
-                    ),
-                    observable_property_mappings=(
-                        ObservablePropertyMapping(
+                    source_observation_groups=[
+                        observation_group.id
+                        for observation_group in followup_groups
+                    ],
+                    observable_property_mappings=[
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id=(
                                 "peh:prop_id_sample"
                             ),
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "study_a:sample_id",
                                 "study_b:sample_id",
-                            ),
+                            ],
                         ),
-                        ObservablePropertyMapping(
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id="peh:prop_chol",
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "study_a:chol",
                                 "study_b:total_cholesterol",
-                            ),
+                            ],
                         ),
-                    ),
+                    ],
                 ),
-            ),
+            ],
         )
 
         concatenated = export_session.concatenate_tabular_dataset_series(
             [first_export, second_export],
             alignment_plan=alignment_plan,
+            observation_groups=observation_groups,
             output_label="aligned_longitudinal_lab",
         )
 
@@ -639,41 +663,45 @@ class TestSessionExport:
             cholesterol_property_id="study_b:total_cholesterol",
         )
 
-        alignment_plan = ObservationAlignmentPlan(
-            observation_assemblies=(
-                ObservationAssembly(
+        observation_groups = (
+            _observation_group(("study_a:sample", "study_a:lab")),
+            _observation_group(("study_b:subject",)),
+        )
+        alignment_plan = peh.ObservationAlignment(
+            id="peh:alignment_contributed_lab",
+            observation_assemblies=[
+                peh.ObservationAssembly(
                     target_observation_id="peh:obs_lab",
-                    source_observation_groups=(
-                        SourceObservationGroup(
-                            ("study_a:sample", "study_a:lab")
-                        ),
-                        SourceObservationGroup(("study_b:subject",)),
-                    ),
-                    observable_property_mappings=(
-                        ObservablePropertyMapping(
+                    source_observation_groups=[
+                        observation_group.id
+                        for observation_group in observation_groups
+                    ],
+                    observable_property_mappings=[
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id=(
                                 "peh:prop_id_sample"
                             ),
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "study_a:sample_id",
                                 "study_b:subject_id",
-                            ),
+                            ],
                         ),
-                        ObservablePropertyMapping(
+                        peh.ObservablePropertyMapping(
                             target_observable_property_id="peh:prop_chol",
-                            source_observable_property_ids=(
+                            source_observable_property_ids=[
                                 "study_a:chol",
                                 "study_b:total_cholesterol",
-                            ),
+                            ],
                         ),
-                    ),
+                    ],
                 ),
-            ),
+            ],
         )
 
         concatenated = export_session.concatenate_tabular_dataset_series(
             [first_export, second_export],
             alignment_plan=alignment_plan,
+            observation_groups=observation_groups,
             output_label="contributed_lab_export",
         )
 
@@ -723,24 +751,28 @@ class TestSessionExport:
             element_label="cholesterol_mg_dl",
         )
 
-        alignment_plan = ObservationAlignmentPlan(
-            observation_assemblies=(
-                ObservationAssembly(
+        observation_groups = (
+            _observation_group(("peh:obs_sample", "peh:obs_lab")),
+            _observation_group(("peh:obs_lab",)),
+        )
+        alignment_plan = peh.ObservationAlignment(
+            id="peh:alignment_inferred_lab",
+            observation_assemblies=[
+                peh.ObservationAssembly(
                     target_observation_id="peh:obs_lab",
-                    source_observation_groups=(
-                        SourceObservationGroup(
-                            ("peh:obs_sample", "peh:obs_lab")
-                        ),
-                        SourceObservationGroup(("peh:obs_lab",)),
-                    ),
-                    observable_property_mappings=(),
+                    source_observation_groups=[
+                        observation_group.id
+                        for observation_group in observation_groups
+                    ],
+                    observable_property_mappings=[],
                 ),
-            ),
+            ],
         )
 
         concatenated = export_session.concatenate_tabular_dataset_series(
             [first_export, second_export],
             alignment_plan=alignment_plan,
+            observation_groups=observation_groups,
             output_label="inferred_lab_export",
         )
 

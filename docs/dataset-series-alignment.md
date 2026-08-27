@@ -5,23 +5,9 @@
 matching: every source series must have the same dataset labels and the same
 observable property identifiers within each paired dataset.
 
-Use an `ObservationAlignmentPlan` when source series use different observation
+Use a PEH `ObservationAlignment` when source series use different observation
 or observable property identifiers, or when one target observation should be
 assembled from more than one source observation.
-
-!!! note "Temporary model location"
-    The semantic alignment classes below are currently defined in pypeh, but
-    are intended to move to `peh_model`/LinkML:
-
-    - `ObservationAlignmentPlan`
-    - `ObservationAssembly`
-    - `SourceObservationGroup`
-    - `ObservablePropertyMapping`
-
-    Pypeh-specific classes such as `DatasetSeriesAlignment`,
-    `DatasetSeriesConcatenationPlan`, `DatasetRef`, and
-    `ContextualElementRef` should remain in pypeh because they refer to
-    concrete `DatasetSeries`, datasets, schema elements, and tabular fields.
 
 ## Strict Concatenation
 
@@ -38,52 +24,65 @@ combined = session.concatenate_tabular_dataset_series(
 ## Align Different Observations And Properties
 
 When source studies use different identifiers for semantically corresponding
-observations or observable properties, provide an `ObservationAlignmentPlan`.
+observations or observable properties, provide an `ObservationAlignment`.
 
 ```python
-from pypeh.core.models.dataset_series_mapping import (
+from peh_model.peh import (
     ObservablePropertyMapping,
-    ObservationAlignmentPlan,
+    ObservationAlignment,
     ObservationAssembly,
-    SourceObservationGroup,
+    ObservationGroup,
 )
 
-alignment_plan = ObservationAlignmentPlan(
-    observation_assemblies=(
+observation_groups = (
+    ObservationGroup(
+        id="peh:og_study_a_lab",
+        observation_id_list=["study_a:obs_lab"],
+    ),
+    ObservationGroup(
+        id="peh:og_study_b_lab",
+        observation_id_list=["study_b:obs_lab"],
+    ),
+)
+
+alignment_plan = ObservationAlignment(
+    id="peh:alignment_lab",
+    observation_assemblies=[
         ObservationAssembly(
             target_observation_id="peh:obs_lab",
-            source_observation_groups=(
-                SourceObservationGroup(("study_a:obs_lab",)),
-                SourceObservationGroup(("study_b:obs_lab",)),
-            ),
-            observable_property_mappings=(
+            source_observation_groups=[
+                "peh:og_study_a_lab",
+                "peh:og_study_b_lab",
+            ],
+            observable_property_mappings=[
                 ObservablePropertyMapping(
                     target_observable_property_id="peh:prop_id_sample",
-                    source_observable_property_ids=(
+                    source_observable_property_ids=[
                         "study_a:sample_id",
                         "study_b:sample_id",
-                    ),
+                    ],
                 ),
                 ObservablePropertyMapping(
                     target_observable_property_id="peh:prop_chol",
-                    source_observable_property_ids=(
+                    source_observable_property_ids=[
                         "study_a:chol",
                         "study_b:total_cholesterol",
-                    ),
+                    ],
                 ),
-            ),
+            ],
         ),
-    ),
+    ],
 )
 
 combined = session.concatenate_tabular_dataset_series(
     [series_a, series_b],
     alignment_plan=alignment_plan,
+    observation_groups=observation_groups,
     output_label="aligned_lab",
 )
 ```
 
-The order of each tuple is positional. In the example above,
+The order of each source group and property list is positional. In the example above,
 `study_a:obs_lab`, `study_a:sample_id`, and `study_a:chol` are resolved against
 `series_a`; the corresponding `study_b:*` identifiers are resolved against
 `series_b`.
@@ -95,39 +94,50 @@ This is useful when one source study splits fields across observation concepts
 that another source study represents as a single observation.
 
 ```python
-alignment_plan = ObservationAlignmentPlan(
-    observation_assemblies=(
+observation_groups = (
+    ObservationGroup(
+        id="peh:og_study_a_sample_lab",
+        observation_id_list=["study_a:obs_sample", "study_a:obs_lab"],
+    ),
+    ObservationGroup(
+        id="peh:og_study_b_subject",
+        observation_id_list=["study_b:obs_subject"],
+    ),
+)
+
+alignment_plan = ObservationAlignment(
+    id="peh:alignment_assembled_lab",
+    observation_assemblies=[
         ObservationAssembly(
             target_observation_id="peh:obs_lab",
-            source_observation_groups=(
-                SourceObservationGroup(
-                    ("study_a:obs_sample", "study_a:obs_lab")
-                ),
-                SourceObservationGroup(("study_b:obs_subject",)),
-            ),
-            observable_property_mappings=(
+            source_observation_groups=[
+                "peh:og_study_a_sample_lab",
+                "peh:og_study_b_subject",
+            ],
+            observable_property_mappings=[
                 ObservablePropertyMapping(
                     target_observable_property_id="peh:prop_id_sample",
-                    source_observable_property_ids=(
+                    source_observable_property_ids=[
                         "study_a:sample_id",
                         "study_b:subject_id",
-                    ),
+                    ],
                 ),
                 ObservablePropertyMapping(
                     target_observable_property_id="peh:prop_chol",
-                    source_observable_property_ids=(
+                    source_observable_property_ids=[
                         "study_a:chol",
                         "study_b:total_cholesterol",
-                    ),
+                    ],
                 ),
-            ),
+            ],
         ),
-    ),
+    ],
 )
 
 combined = session.concatenate_tabular_dataset_series(
     [series_a, series_b],
     alignment_plan=alignment_plan,
+    observation_groups=observation_groups,
     output_label="assembled_lab",
 )
 ```
@@ -145,23 +155,31 @@ pypeh infers identity mappings for observable property identifiers shared by
 all source observation groups.
 
 ```python
-alignment_plan = ObservationAlignmentPlan(
-    observation_assemblies=(
+observation_groups = (
+    ObservationGroup(
+        id="peh:og_sample_lab",
+        observation_id_list=["peh:obs_sample", "peh:obs_lab"],
+    ),
+    ObservationGroup(
+        id="peh:og_lab",
+        observation_id_list=["peh:obs_lab"],
+    ),
+)
+
+alignment_plan = ObservationAlignment(
+    id="peh:alignment_inferred_lab",
+    observation_assemblies=[
         ObservationAssembly(
             target_observation_id="peh:obs_lab",
-            source_observation_groups=(
-                SourceObservationGroup(
-                    ("peh:obs_sample", "peh:obs_lab")
-                ),
-                SourceObservationGroup(("peh:obs_lab",)),
-            ),
+            source_observation_groups=["peh:og_sample_lab", "peh:og_lab"],
         ),
-    ),
+    ],
 )
 
 combined = session.concatenate_tabular_dataset_series(
     [series_a, series_b],
     alignment_plan=alignment_plan,
+    observation_groups=observation_groups,
     output_label="inferred_lab",
 )
 ```
@@ -175,10 +193,10 @@ objects.
 
 Direct concatenation currently assumes:
 
-- each `SourceObservationGroup` position corresponds to the `DatasetSeries` at
+- each source `ObservationGroup` position corresponds to the `DatasetSeries` at
   the same position in the list passed to `concatenate_tabular_dataset_series`;
 - each explicit `ObservablePropertyMapping.source_observable_property_ids`
-  tuple has one entry per source `DatasetSeries`;
+  list has one entry per source `DatasetSeries`;
 - each scoped property resolves to one source field per series;
 - aligned fields have compatible value types;
 - one output dataset is not assembled from multiple source datasets within the

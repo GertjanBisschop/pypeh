@@ -27,6 +27,7 @@ ENTITYLIST_MAPPING = {
     "DataImportConfig": "import_configs",
     "DataExportConfig": "export_configs",
     "DataRequest": "data_requests",
+    "ObservationAlignment": "observation_alignments",
 }
 
 
